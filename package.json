@@ -4,7 +4,7 @@
   "description": "Visualize AWS CDK stacks instantly.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.108.1"
+    "vscode": "^1.107.0"
   },
   "categories": [
     "Other"
@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "cdk-stackmap.helloWorld",
-        "title": "Hello World"
+        "command": "cdk-stackmap.visualize",
+        "title": "CDK StackMap: Visualize Stack"
       }
     ]
   },

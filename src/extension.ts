@@ -1,26 +1,89 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import { parseCloudFormation, GraphData } from './parser';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	
+	let disposable = vscode.commands.registerCommand('cdk-stackmap.visualize', async () => {
+		
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders) return;
+		
+		const rootPath = workspaceFolders[0].uri.fsPath;
+		const cdkOutPath = path.join(rootPath, 'cdk.out');
+		const manifestPath = path.join(cdkOutPath, 'manifest.json');
+		
+		if (!fs.existsSync(manifestPath)) {
+			vscode.window.showErrorMessage('No se encontró cdk.out. Ejecuta "cdk synth".');
+			return;
+		}
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "cdk-stackmap" is now active!');
+		try {
+			const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+			let allNodes: any[] = [];
+			let allEdges: any[] = [];
+			let stacksFound = 0;
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('cdk-stackmap.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from CDK StackMap!');
+			for (const key in manifest.artifacts) {
+				const artifact = manifest.artifacts[key];
+				if (artifact.type === 'aws:cloudformation:stack' && artifact.properties && artifact.properties.templateFile) {
+					const templateFileName = artifact.properties.templateFile;
+					const templatePath = path.join(cdkOutPath, templateFileName);
+					if (fs.existsSync(templatePath)) {
+						const templateObj = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
+						const graphData = parseCloudFormation(templateObj, key);
+						allNodes = [...allNodes, ...graphData.nodes];
+						allEdges = [...allEdges, ...graphData.edges];
+						stacksFound++;
+					}
+				}
+			}
+            
+            if (stacksFound === 0) {
+				vscode.window.showWarningMessage('No se encontraron Stacks válidos.');
+				return;
+			}
+
+			const finalGraph: GraphData = { nodes: allNodes, edges: allEdges };
+
+            // Creamos el panel
+			const panel = vscode.window.createWebviewPanel(
+				'cdkStackMap',
+				`CDK Map (${stacksFound} Stacks)`,
+				vscode.ViewColumn.Two,
+				{ 
+                    enableScripts: true,
+                    // Importante para cuando quieras cargar CSS locales en el futuro
+                    localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'media'))]
+                }
+			);
+
+            // CARGAMOS EL HTML DESDE EL ARCHIVO
+            const htmlContent = getHtmlForWebview(context, finalGraph, stacksFound);
+			panel.webview.html = htmlContent;
+
+		} catch (error) {
+			vscode.window.showErrorMessage('Error procesando el CDK Stack.');
+			console.error(error);
+		}
 	});
 
 	context.subscriptions.push(disposable);
 }
 
-// This method is called when your extension is deactivated
+function getHtmlForWebview(context: vscode.ExtensionContext, graphData: GraphData, count: number): string {
+    // 1. Obtenemos la ruta del archivo HTML en disco
+    const htmlPath = path.join(context.extensionPath, 'media', 'index.html');
+    
+    // 2. Leemos el contenido como texto
+    let html = fs.readFileSync(htmlPath, 'utf-8');
+
+    // 3. Reemplazamos las marcas {{...}} por los datos reales
+    html = html.replace('{{stackCount}}', count.toString());
+    html = html.replace('{{graphData}}', JSON.stringify(graphData));
+
+    return html;
+}
+
 export function deactivate() {}
