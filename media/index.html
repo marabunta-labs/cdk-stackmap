@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com;">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/webcola/WebCola/cola.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-cola/cytoscape-cola.js"></script>
+
+    <title>CDK StackMap - WebCola Style</title>
+    <style>
+        body, html { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #1e1e1e; font-family: 'Segoe UI', sans-serif; }
+        #cy { width: 100%; height: 100%; display: block; background: radial-gradient(circle at bottom center, #2a2a2d 0%, #1e1e1e 80%); }
+        
+        #info { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(37, 37, 38, 0.95); backdrop-filter: blur(4px); color: #cccccc; padding: 0; border-radius: 6px; font-size: 12px; border: 1px solid #454545; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 220px; display: flex; flex-direction: column; transition: max-height 0.3s ease; }
+        .panel-header { padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid transparent; }
+        .panel-header:hover { background: rgba(255, 255, 255, 0.1); }
+        .arrow { transition: transform 0.2s; font-size: 10px; margin-right: 8px; display: inline-block; }
+        .panel-header.expanded .arrow { transform: rotate(90deg); }
+        .panel-header.expanded { border-bottom: 1px solid #454545; }
+        .badge { background:#007acc; padding: 2px 8px; border-radius:10px; font-size:11px; color:white; font-weight: normal; }
+        #stack-list-container { display: none; overflow: hidden; }
+        #stack-list-container.show { display: block; }
+        #stack-list { padding: 10px; max-height: 60vh; overflow-y: auto; }
+        .stack-item { display: flex; align-items: center; margin-bottom: 6px; cursor: pointer; padding: 4px; border-radius: 4px; transition: background 0.2s; }
+        .stack-item:hover { background-color: #2a2d2e; }
+        .stack-item input { margin-right: 8px; cursor: pointer; }
+        .stack-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+        
+        #popup { display: none; position: absolute; z-index: 100; background-color: #252526; border: 1px solid #454545; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 12px; border-radius: 5px; min-width: 200px; max-width: 300px; color: #cccccc; font-size: 13px; animation: fadeIn 0.2s ease-in-out; pointer-events: none; }
+        #popup h3 { margin: 0 0 8px 0; color: #ffffff; font-size: 14px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        #popup .prop { margin-bottom: 4px; display: flex; }
+        #popup .label { font-weight: bold; color: #888; width: 60px; flex-shrink: 0; }
+        #popup .val { color: #4ec9b0; word-break: break-all; }
+        #popup .val.res { color: #ce9178; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    
+    <div id="info">
+        <div class="panel-header" id="panel-toggle">
+            <div style="display:flex; align-items:center">
+                <span class="arrow">▶</span> <span>Stacks</span>
+            </div>
+            <span id="counter-badge" class="badge">0 / 0</span>
+        </div>
+        <div style="padding: 10px; display: flex; gap: 5px; background: rgba(0,0,0,0.2);">
+            <button id="btn-center" style="flex:1; background:#0e639c; color:white; border:1px solid #1177bb; padding:8px; cursor:pointer; border-radius:3px; font-weight:bold;">🎯 Ver Todo</button>
+        </div>
+        <div id="stack-list-container">
+            <div id="stack-list"></div>
+            <div style="padding: 8px; border-top: 1px solid #444; font-size: 10px; color: #777; text-align: center;">Utiliza el Checkbox para eliminar/añadir</div>
+        </div>
+    </div>
+    
+    <div id="popup"></div>
+    <div id="cy"></div>
+
+    <script>
+        const graphData = {{graphData}};
+
+        var cy = cytoscape({
+            container: document.getElementById('cy'),
+            elements: graphData,
+            
+            // Configuración de Zoom/Pan
+            minZoom: 0.1, maxZoom: 2.5, wheelSensitivity: 0.2,
+            boxSelectionEnabled: false, 
+
+            layout: { name: 'grid', fit: true, padding: 50 }, 
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'shape': 'round-rectangle', 'width': 'label', 'height': 'label', 'padding': '10px',
+                        'background-color': '#4a4a4a', 'label': 'data(label)', 'color': '#fff',
+                        'text-valign': 'center', 'text-halign': 'center', 'font-size': '12px',
+                        'border-width': 0, 'shadow-blur': 12, 'shadow-color': '#000', 'shadow-opacity': 0.3, 'shadow-offset-y': 4,
+                        'text-wrap': 'ellipsis', 'text-max-width': '160px',
+                        'transition-property': 'background-color, opacity', 'transition-duration': '0.3s'
+                    }
+                },
+                {
+                    selector: ':parent',
+                    style: {
+                        'background-opacity': 0.1, 'background-color': '#ffffff',
+                        'border-width': 2, 'border-style': 'dashed', 'border-color': '#ffffff44',
+                        'label': 'data(label)', 'text-valign': 'top', 'text-margin-y': -10,
+                        'color': '#aaa', 'font-size': '14px', 'font-weight': 'bold',
+                        'padding': '60px', // Padding grande para agarrar
+                        'compound-sizing-wrt-labels': 'include'
+                    }
+                },
+                { selector: 'node[type $= "Function"]', style: { 'background-color': '#FF9900', 'color': '#000' } }, 
+                { selector: 'node[type $= "Bucket"]', style: { 'background-color': '#3F8624' } }, 
+                { selector: 'node[type $= "Table"]', style: { 'background-color': '#3355DA' } }, 
+                { selector: 'node[type $= "Queue"]', style: { 'background-color': '#D13212' } }, 
+                { selector: 'node[type $= "Topic"]', style: { 'background-color': '#D13212' } },
+                { selector: 'node[type $= "Role"]', style: { 'shape':'ellipse', 'width':30, 'height':30, 'padding':0, 'background-color': '#777', 'label':'' } },
+                { selector: 'edge', style: { 'width': 2, 'line-color': '#888', 'opacity': 0.3, 'target-arrow-color': '#888', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier' } },
+                { selector: ':selected', style: { 'border-width': 2, 'border-color': '#fff', 'shadow-opacity': 0.8, 'z-index': 999 } },
+                { selector: 'edge:selected', style: { 'line-color': '#fff', 'target-arrow-color': '#fff', 'opacity': 1, 'width': 3 } }
+            ]
+        });
+
+        // --- GESTIÓN INTELIGENTE DEL LAYOUT ---
+        let layoutInstance = null;
+
+        // Configuración Base
+        const baseConfig = {
+            name: 'cola',
+            infinite: true,
+            fit: false, // Desactiva el ajuste automático
+            boundingBox: { x1: -1000, y1: -1000, w: 2000, h: 2000 }, // Área inicial más grande
+            edgeLength: 100, // Longitud de las aristas
+            nodeSpacing: function(node) { return node.isParent() ? 60 : 30; },
+            initialTemp: 1, // Temperatura inicial baja
+            initialEnergy: 1, // Energía inicial baja
+            damping: 0.8,
+            refresh: 1,
+            randomize: false,
+            maxSimulationTime: 60000,
+            avoidOverlap: true,
+            handleDisconnected: true,
+        };
+
+
+        // Función para ejecutar el layout dependiendo de la acción
+        function runLayout(mode) {
+            if(layoutInstance) layoutInstance.stop();
+
+            let specificConfig = { ...baseConfig };
+
+            if (mode === 'add') {
+                // MODO AÑADIR:
+                // Damos un poco de energía (initialTemp) para que el nuevo nodo
+                // se haga hueco entre los existentes.
+                specificConfig.initialTemp = 10; 
+                specificConfig.initialEnergy = 10;
+            } else if (mode === 'remove') {
+                // MODO ELIMINAR (Estilo WebCola):
+                // Temperatura CERO. El gráfico se actualiza (ya no hay nodo)
+                // pero no se aplica fuerza inicial. Todo se queda quieto.
+                specificConfig.initialTemp = 0;
+                specificConfig.initialEnergy = 0;
+            }
+
+            layoutInstance = cy.layout(specificConfig);
+            layoutInstance.run();
+        }
+
+        // Arrancamos inicial
+        runLayout('add');
+        
+        cy.ready(function() { cy.fit(50); });
+
+        // Mochila de eliminados
+        const removedStacks = {};
+
+        // --- UI Logic ---
+        const stackListEl = document.getElementById('stack-list');
+        const counterBadge = document.getElementById('counter-badge');
+        const panelToggle = document.getElementById('panel-toggle');
+        const listContainer = document.getElementById('stack-list-container');
+        
+        const initialStackNodes = cy.nodes().filter(n => n.isParent());
+        const totalStacks = initialStackNodes.length;
+        
+        function updateCounter() {
+            const checkedCount = document.querySelectorAll('.stack-item input:checked').length;
+            counterBadge.innerText = `${checkedCount} / ${totalStacks}`;
+        }
+
+        initialStackNodes.forEach(stackNode => {
+            const stackName = stackNode.data('id');
+            const div = document.createElement('div');
+            div.className = 'stack-item';
+            div.innerHTML = `
+                <input type="checkbox" checked id="chk-${stackName}" value="${stackName}">
+                <label for="chk-${stackName}"><span>${stackName}</span></label>
+            `;
+            stackListEl.appendChild(div);
+
+            const checkbox = div.querySelector('input');
+            checkbox.addEventListener('change', function(e) {
+                const shouldBeVisible = e.target.checked;
+                const targetStackId = e.target.value;
+
+                if (shouldBeVisible) {
+                    // --- AÑADIR ---
+                    if (removedStacks[targetStackId]) {
+                        cy.add(removedStacks[targetStackId]);
+                        delete removedStacks[targetStackId];
+                    }
+                    // Ejecutamos layout con energía para acomodar al nuevo
+                    runLayout('add');
+                } else {
+                    // --- ELIMINAR ---
+                    const elementsToRemove = cy.elements(`node[id = "${targetStackId}"], node[parent = "${targetStackId}"]`);
+                    removedStacks[targetStackId] = elementsToRemove.remove();
+                    
+                    // Ejecutamos layout SIN energía. El hueco se queda vacío.
+                    runLayout('remove');
+                }
+                
+                updateCounter();
+            });
+        });
+        updateCounter();
+
+        // Panel Toggle
+        panelToggle.addEventListener('click', () => {
+            const isClosed = listContainer.style.display === '' || listContainer.style.display === 'none';
+            if (isClosed) { listContainer.style.display = 'block'; panelToggle.classList.add('expanded'); } 
+            else { listContainer.style.display = 'none'; panelToggle.classList.remove('expanded'); }
+        });
+
+        // Popups
+        const popup = document.getElementById('popup');
+        cy.on('mouseover', 'node', function(evt){ 
+            const node = evt.target; const data = node.data();
+            if (node.isParent()) return;
+            showPopup(evt.renderedPosition, `
+                <h3>🧩 Recurso AWS</h3>
+                <div class="prop"><span class="label">ID:</span> <span class="val">${data.id}</span></div>
+                <div class="prop"><span class="label">Tipo:</span> <span class="val res">${data.type}</span></div>
+                <div class="prop"><span class="label">Stack:</span> <span class="val">${data.parent}</span></div>
+            `);
+        });
+        cy.on('mouseover', 'edge', function(evt){
+            const edge = evt.target; const data = edge.data();
+            showPopup(evt.renderedPosition, `
+                <h3>🔗 Dependencia</h3>
+                <div class="prop"><span class="label">De:</span> <span class="val">${data.source}</span></div>
+                <div class="prop"><span class="label">A:</span> <span class="val">${data.target}</span></div>
+            `);
+        });
+        cy.on('mouseout', 'node', function(){ popup.style.display = 'none'; });
+        cy.on('mouseout', 'edge', function(){ popup.style.display = 'none'; });
+        
+        function showPopup(pos, htmlContent) {
+            popup.innerHTML = htmlContent; popup.style.display = 'block';
+            popup.style.left = (pos.x + 20) + 'px'; popup.style.top = (pos.y + 20) + 'px';
+        }
+
+        // Botón Centrar
+        const btnCenter = document.getElementById('btn-center');
+        btnCenter.addEventListener('click', () => {
+            cy.fit(50); 
+            // Si centras, le damos un pequeño empujón por si algo estaba atascado
+            if(layoutInstance) layoutInstance.alpha(0.5);
+        });
+    </script>
+</body>
+</html>
