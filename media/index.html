@@ -127,35 +127,9 @@
             handleDisconnected: true,
         };
 
-
-        // Función para ejecutar el layout dependiendo de la acción
-        function runLayout(mode) {
-            if(layoutInstance) layoutInstance.stop();
-
-            let specificConfig = { ...baseConfig };
-
-            if (mode === 'add') {
-                // MODO AÑADIR:
-                // Damos un poco de energía (initialTemp) para que el nuevo nodo
-                // se haga hueco entre los existentes.
-                specificConfig.initialTemp = 10; 
-                specificConfig.initialEnergy = 10;
-            } else if (mode === 'remove') {
-                // MODO ELIMINAR (Estilo WebCola):
-                // Temperatura CERO. El gráfico se actualiza (ya no hay nodo)
-                // pero no se aplica fuerza inicial. Todo se queda quieto.
-                specificConfig.initialTemp = 0;
-                specificConfig.initialEnergy = 0;
-            }
-
-            layoutInstance = cy.layout(specificConfig);
-            layoutInstance.run();
-        }
-
-        // Arrancamos inicial
-        runLayout('add');
-        
-        cy.ready(function() { cy.fit(50); });
+        // Arrancamos layout inicial
+        layoutInstance = cy.layout(baseConfig);
+        layoutInstance.run();
 
         // Mochila de eliminados
         const removedStacks = {};
@@ -190,20 +164,13 @@
                 const targetStackId = e.target.value;
 
                 if (shouldBeVisible) {
-                    // --- AÑADIR ---
                     if (removedStacks[targetStackId]) {
                         cy.add(removedStacks[targetStackId]);
                         delete removedStacks[targetStackId];
                     }
-                    // Ejecutamos layout con energía para acomodar al nuevo
-                    runLayout('add');
                 } else {
-                    // --- ELIMINAR ---
                     const elementsToRemove = cy.elements(`node[id = "${targetStackId}"], node[parent = "${targetStackId}"]`);
                     removedStacks[targetStackId] = elementsToRemove.remove();
-                    
-                    // Ejecutamos layout SIN energía. El hueco se queda vacío.
-                    runLayout('remove');
                 }
                 
                 updateCounter();
@@ -249,9 +216,13 @@
         // Botón Centrar
         const btnCenter = document.getElementById('btn-center');
         btnCenter.addEventListener('click', () => {
+            cy.fit(50);
+        });
+        
+        // Fit inicial y mostrar
+        cy.ready(function() { 
             cy.fit(50); 
-            // Si centras, le damos un pequeño empujón por si algo estaba atascado
-            if(layoutInstance) layoutInstance.alpha(0.5);
+            document.getElementById('cy').classList.add('loaded');
         });
     </script>
 </body>
