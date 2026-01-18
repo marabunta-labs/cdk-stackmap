@@ -2,18 +2,95 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Stacks "Always-On" (Sólidos)</title>
+<title>Stacks "Always-On" con UI</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
+/* --- ESTILOS GENERALES --- */
 html, body { margin:0; width:100%; height:100%; background:#1e1e1e; font-family:Segoe UI, sans-serif; overflow:hidden;}
 svg { width:100%; height:100%; }
 .group-rect { fill: rgba(255,255,255,0.04); stroke: #aaa; stroke-width: 2; stroke-dasharray: 6 3; rx:12; }
 .group-label { fill:#aaa; font-size:13px; font-weight:bold; }
 .node rect { fill:#3c3c3c; stroke:#000; rx:4; }
 .node text { fill:#eee; font-size:11px; text-anchor:middle; dominant-baseline:middle; pointer-events:none; }
+
+/* --- NUEVOS ESTILOS PARA EL PANEL FLOTANTE --- */
+#ui-controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 220px;
+    background: #2d2d2d;
+    border: 1px solid #444;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    color: #eee;
+    font-size: 13px;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.ui-header {
+    padding: 12px 15px;
+    background: #383838;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    user-select: none;
+}
+
+.ui-header:hover {
+    background: #444;
+}
+
+.ui-content {
+    display: none; /* Oculto por defecto */
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 10px;
+    border-top: 1px solid #444;
+}
+
+.ui-content.open {
+    display: block;
+}
+
+.ui-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.ui-row:last-child {
+    margin-bottom: 0;
+}
+
+.ui-row input {
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.ui-row label {
+    cursor: pointer;
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 </style>
 </head>
 <body>
+
+<div id="ui-controls">
+    <div class="ui-header" id="ui-header">
+        <span id="ui-title">Stacks</span>
+        <span id="ui-arrow">▼</span>
+    </div>
+    <div class="ui-content" id="ui-list">
+        </div>
+</div>
+
 <div id="graph"></div>
 
 <script>
@@ -72,11 +149,13 @@ rawData.nodes.forEach(n=>{
     } else {
         stackNodes.push({
             id:d.id,
+            label: d.label || d.id, // Asegurar etiqueta para el UI
             x:Math.random()*600-300,
             y:Math.random()*400-200,
             fx:null, fy:null,
             isDragging: false,
-            nodeSim:null
+            nodeSim:null,
+            visible: true // <--- PROPIEDAD NUEVA PARA EL TOGGLE
         });
     }
 });
@@ -100,25 +179,14 @@ function getStackBox(stack){
 // ----------------------
 stackNodes.forEach(stack=>{
     const children = stacks[stack.id] || [];
-    
-    // Configuración para correr ETERNAMENTE sin explotar
     stack.nodeSim = d3.forceSimulation(children)
         .force("collide", d3.forceCollide()
             .radius(d=>d.collisionRadius + 1)
             .strength(1)
             .iterations(2))
-        
-        // alphaDecay(0) significa que la temperatura NUNCA baja.
-        // La simulación nunca se detiene ("sleep").
         .alphaDecay(0) 
-        .alpha(0.1) // Mantenemos una temperatura baja constante
-        
-        // velocityDecay(0.9) es Fricción extrema. 
-        // Evita que la simulación eterna cause vibraciones.
-        // Los nodos se mueven solo si los empujas.
-        .velocityDecay(0.9) 
-        
-        // No llamamos a stop(). La dejamos corriendo.
+        .alpha(0.1) 
+        .velocityDecay(0.9);
 });
 
 // ----------------------
@@ -136,13 +204,15 @@ const nodeLayer = g.append("g");
 // --- STACKS (CAJAS) ---
 const groupSel = groupLayer.selectAll(".group").data(stackNodes).enter().append("g")
     .attr("class","group")
+    .attr("id", d => "stack-group-" + d.id) // ID para control visual fácil
     .call(d3.drag()
         .on("start", (e,d)=>{
+            if(!d.visible) return; // No arrastrar si invisible
             d.fx=d.x; d.fy=d.y; 
             d.isDragging = true;
-            // NO TOCAMOS LA SIMULACIÓN. Ya está corriendo.
         })
         .on("drag", (e,d)=>{
+            if(!d.visible) return;
             const dx = e.x - d.x;
             const dy = e.y - d.y;
             d.x += dx; d.y += dy;
@@ -160,41 +230,34 @@ groupSel.append("text").attr("class","group-label").text(d=>d.id);
 // --- NODOS ---
 const nodeSel = nodeLayer.selectAll(".node").data(nodes).enter().append("g")
     .attr("class","node")
+    .attr("data-parent", d => d.parent) // Data attribute para filtrar visualmente
     .call(d3.drag()
         .on("start",(e,d)=>{ 
-            d.fx=d.x; d.fy=d.y; 
             const parent = stackNodes.find(s=>s.id===d.parent);
-            if(parent) {
-                parent.isDragging = true;
-                // CERO INTERACCIÓN CON LA SIMULACIÓN AQUÍ.
-                // Al hacer clic, no inyectamos energía. Cero explosiones.
-            }
+            if(parent && !parent.visible) return; // Bloquear si invisible
+            
+            d.fx=d.x; d.fy=d.y; 
+            if(parent) parent.isDragging = true;
         })
         .on("drag",(e,d)=>{
-            d.fx = e.x; d.fy = e.y;
-            
             const parent = stackNodes.find(s=>s.id===d.parent);
-            
-            // Arrastre "elástico" del stack
-            const influence = 0.2; 
-            parent.x += (e.x - parent.x) * influence;
-            parent.y += (e.y - parent.y) * influence;
+            if(parent && !parent.visible) return;
 
-            // Tampoco necesitamos "despertar" la simulación aquí, porque
-            // con alphaDecay(0) ya está despierta.
-            // Al mover d.fx/fy, la simulación continua resolverá la colisión automáticamente.
+            d.fx = e.x; d.fy = e.y;
+            if(parent){
+                const influence = 0.2; 
+                parent.x += (e.x - parent.x) * influence;
+                parent.y += (e.y - parent.y) * influence;
+            }
         })
         .on("end",(e,d)=>{ 
             d.fx=null; d.fy=null; 
             const parent = stackNodes.find(s=>s.id===d.parent);
-            if(parent) {
-                parent.isDragging = false;
-            }
+            if(parent) parent.isDragging = false;
         })
     );
 
 nodeSel.append("rect").attr("x",d=>-d.width/2).attr("y",d=>-d.height/2).attr("width",d=>d.width).attr("height",d=>d.height);
-
 nodeSel.append("text").each(function(d){
     const lines = wrapText(d,d.label, 120);
     d3.select(this).selectAll("*").remove();
@@ -208,19 +271,87 @@ nodeSel.append("text").each(function(d){
 });
 
 // ----------------------
-// 5. Tick Loop
+// 5. Lógica del UI Flotante
+// ----------------------
+function updateUIHeader() {
+    const total = stackNodes.length;
+    const visible = stackNodes.filter(s => s.visible).length;
+    document.getElementById("ui-title").innerText = `Stacks ${visible}/${total}`;
+}
+
+function updateVisibility(stackId, isVisible) {
+    // 1. Actualizar modelo de datos
+    const stack = stackNodes.find(s => s.id === stackId);
+    if(stack) stack.visible = isVisible;
+
+    // 2. Actualizar visualización SVG
+    // Ocultar grupo del stack
+    groupSel.filter(d => d.id === stackId)
+        .style("display", isVisible ? "inline" : "none");
+    
+    // Ocultar nodos hijos
+    nodeSel.filter(d => d.parent === stackId)
+        .style("display", isVisible ? "inline" : "none");
+
+    // 3. Actualizar contador
+    updateUIHeader();
+}
+
+function initUI() {
+    const list = document.getElementById("ui-list");
+    const header = document.getElementById("ui-header");
+    
+    // Toggle desplegable
+    header.addEventListener("click", () => {
+        list.classList.toggle("open");
+        const arrow = document.getElementById("ui-arrow");
+        arrow.innerText = list.classList.contains("open") ? "▲" : "▼";
+    });
+
+    // Generar checkboxes
+    stackNodes.forEach(s => {
+        const row = document.createElement("div");
+        row.className = "ui-row";
+
+        const chk = document.createElement("input");
+        chk.type = "checkbox";
+        chk.checked = s.visible;
+        chk.id = "chk-" + s.id;
+        
+        chk.addEventListener("change", (e) => {
+            updateVisibility(s.id, e.target.checked);
+        });
+
+        const lbl = document.createElement("label");
+        lbl.htmlFor = "chk-" + s.id;
+        lbl.innerText = s.label || s.id;
+        lbl.title = s.label || s.id; // Tooltip para nombres largos
+
+        row.appendChild(chk);
+        row.appendChild(lbl);
+        list.appendChild(row);
+    });
+
+    updateUIHeader();
+}
+
+// Iniciar UI
+initUI();
+
+
+// ----------------------
+// 6. Tick Loop (Modificado para visibilidad)
 // ----------------------
 function ticked(){
     // 1. FÍSICA ETERNA
     stackNodes.forEach(stack=>{
-        // Llamamos a tick() MANUALMENTE en cada frame.
-        // Como alphaDecay es 0, siempre aplica fuerzas de colisión.
-        // Como velocityDecay es 0.9, no vibran.
+        // Si no es visible, no calculamos sus físicas internas
+        if(!stack.visible) return;
+
         if(stack.nodeSim) stack.nodeSim.tick();
 
         const children = stacks[stack.id] || [];
         if(children.length){
-            // Lógica de "Corral" (Para que no se desperdiguen si los tiras lejos)
             const equilibriumRadius = Math.sqrt(children.length) * 45;
 
             children.forEach(n => {
@@ -238,7 +369,7 @@ function ticked(){
                 }
             });
 
-            // Re-centrado suave de la caja
+            // Re-centrado
             const cx = d3.mean(children,d=>d.x);
             const cy = d3.mean(children,d=>d.y);
             
@@ -249,15 +380,20 @@ function ticked(){
         }
     });
 
-    // Colisiones Stacks (Bulldozer)
+    // Colisiones Stacks
     const paddingStack = 30;
     for(let i=0;i<stackNodes.length;i++){
         const a = stackNodes[i];
+        if(!a.visible) continue; // Salta si A es invisible
+
         const aBox = getStackBox(a);
         const acx = aBox.x + aBox.w/2;
         const acy = aBox.y + aBox.h/2;
+        
         for(let j=i+1;j<stackNodes.length;j++){
             const b = stackNodes[j];
+            if(!b.visible) continue; // Salta si B es invisible
+
             const bBox = getStackBox(b);
             const bcx = bBox.x + bBox.w/2;
             const bcy = bBox.y + bBox.h/2;
@@ -290,8 +426,11 @@ function ticked(){
         }
     }
 
-    // Actualizar SVG
+    // Actualizar SVG (Solo si es visible, aunque display:none ya maneja visuales)
+    // Dejamos que actualice posiciones para que cuando reaparezca esté en su sitio actualizado
     groupSel.each(function(d){
+        if(!d.visible) return; // Optimización ligera en render
+
         const box = getStackBox(d);
         d3.select(this)
             .attr("transform",`translate(${d.x},${d.y})`)
@@ -303,7 +442,12 @@ function ticked(){
             .attr("y",(box.y-d.y)+20);
     });
 
-    nodeSel.attr("transform", d=>`translate(${d.x},${d.y})`);
+    nodeSel
+        .filter(d => {
+            const p = stackNodes.find(s=>s.id === d.parent);
+            return p && p.visible;
+        })
+        .attr("transform", d=>`translate(${d.x},${d.y})`);
 
     requestAnimationFrame(ticked);
 }
