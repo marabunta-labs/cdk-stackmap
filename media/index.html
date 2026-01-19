@@ -2,82 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Stacks "Always-On" con UI</title>
+<title>Stacks "Always-On" con Dependencias</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 /* --- ESTILOS GENERALES --- */
 html, body { margin:0; width:100%; height:100%; background:#1e1e1e; font-family:Segoe UI, sans-serif; overflow:hidden;}
 svg { width:100%; height:100%; }
+
+/* Estilos de Stacks y Nodos */
 .group-rect { fill: rgba(255,255,255,0.04); stroke: #aaa; stroke-width: 2; stroke-dasharray: 6 3; rx:12; }
 .group-label { fill:#aaa; font-size:13px; font-weight:bold; }
 .node rect { fill:#3c3c3c; stroke:#000; rx:4; }
 .node text { fill:#eee; font-size:11px; text-anchor:middle; dominant-baseline:middle; pointer-events:none; }
 
-/* --- NUEVOS ESTILOS PARA EL PANEL FLOTANTE --- */
+/* Estilos de Enlaces (Dependencias) */
+.link { stroke: #666; stroke-width: 1.5px; opacity: 0.6; pointer-events: none; }
+#arrowhead { fill: #666; }
+
+/* --- PANEL FLOTANTE --- */
 #ui-controls {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 220px;
-    background: #2d2d2d;
-    border: 1px solid #444;
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    color: #eee;
-    font-size: 13px;
-    z-index: 1000;
-    overflow: hidden;
+    position: absolute; top: 20px; right: 20px; width: 220px;
+    background: #2d2d2d; border: 1px solid #444; border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: #eee; font-size: 13px;
+    z-index: 1000; overflow: hidden;
 }
-
 .ui-header {
-    padding: 12px 15px;
-    background: #383838;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: bold;
-    user-select: none;
+    padding: 12px 15px; background: #383838; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    font-weight: bold; user-select: none;
 }
-
-.ui-header:hover {
-    background: #444;
-}
-
-.ui-content {
-    display: none; /* Oculto por defecto */
-    max-height: 400px;
-    overflow-y: auto;
-    padding: 10px;
-    border-top: 1px solid #444;
-}
-
-.ui-content.open {
-    display: block;
-}
-
-.ui-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.ui-row:last-child {
-    margin-bottom: 0;
-}
-
-.ui-row input {
-    margin-right: 10px;
-    cursor: pointer;
-}
-
-.ui-row label {
-    cursor: pointer;
-    flex-grow: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+.ui-header:hover { background: #444; }
+.ui-content { display: none; max-height: 400px; overflow-y: auto; padding: 10px; border-top: 1px solid #444; }
+.ui-content.open { display: block; }
+.ui-row { display: flex; align-items: center; margin-bottom: 8px; }
+.ui-row:last-child { margin-bottom: 0; }
+.ui-row input { margin-right: 10px; cursor: pointer; }
+.ui-row label { cursor: pointer; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -87,15 +47,14 @@ svg { width:100%; height:100%; }
         <span id="ui-title">Stacks</span>
         <span id="ui-arrow">▼</span>
     </div>
-    <div class="ui-content" id="ui-list">
-        </div>
+    <div class="ui-content" id="ui-list"></div>
 </div>
 
 <div id="graph"></div>
 
 <script>
 // ----------------------
-// 0. Helpers
+// 0. Helpers Texto
 // ----------------------
 function measureText(text, fontSize = 11, fontFamily = "Segoe UI") {
     const ctx = document.createElement("canvas").getContext("2d");
@@ -130,7 +89,9 @@ const rawData = {{graphData}};
 const nodes = [];
 const stackNodes = [];
 const stacks = {};
+const links = []; // Array para guardar las conexiones
 
+// A. Procesar Nodos
 rawData.nodes.forEach(n=>{
     const d = n.data;
     if(d.parent){
@@ -149,19 +110,37 @@ rawData.nodes.forEach(n=>{
     } else {
         stackNodes.push({
             id:d.id,
-            label: d.label || d.id, // Asegurar etiqueta para el UI
+            label: d.label || d.id,
             x:Math.random()*600-300,
             y:Math.random()*400-200,
             fx:null, fy:null,
             isDragging: false,
             nodeSim:null,
-            visible: true // <--- PROPIEDAD NUEVA PARA EL TOGGLE
+            visible: true 
         });
     }
 });
 
+// B. Procesar Dependencias (Edges)
+if(rawData.edges){
+    rawData.edges.forEach(e => {
+        const d = e.data;
+        // Buscamos los objetos nodo reales
+        const sourceNode = nodes.find(n => n.id === d.source);
+        const targetNode = nodes.find(n => n.id === d.target);
+
+        if(sourceNode && targetNode){
+            links.push({
+                id: d.id,
+                source: sourceNode,
+                target: targetNode
+            });
+        }
+    });
+}
+
 // ----------------------
-// 2. Helpers
+// 2. Helpers Stacks
 // ----------------------
 function getStackBox(stack){
     const children = stacks[stack.id] || [];
@@ -190,24 +169,38 @@ stackNodes.forEach(stack=>{
 });
 
 // ----------------------
-// 4. SVG y DRAG
+// 4. SVG y Capas
 // ----------------------
 const w = window.innerWidth;
 const h = window.innerHeight;
 const svg = d3.select("#graph").append("svg").attr("viewBox",[-w/2,-h/2,w,h]);
+
+// Definición de flecha (marker)
+svg.append("defs").append("marker")
+    .attr("id", "arrowhead")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 10) // Ajuste para que no quede debajo del rect (se ajustará en lógica o CSS)
+    .attr("refY", 0)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5");
+
 const g = svg.append("g");
 svg.call(d3.zoom().scaleExtent([0.1,4]).on("zoom",e=>g.attr("transform",e.transform)));
 
+// ORDEN DE CAPAS: Stacks (Fondo) -> Links (Medio) -> Nodos (Frente)
 const groupLayer = g.append("g");
+const linkLayer = g.append("g"); // <--- NUEVA CAPA
 const nodeLayer = g.append("g");
 
-// --- STACKS (CAJAS) ---
+// --- STACKS ---
 const groupSel = groupLayer.selectAll(".group").data(stackNodes).enter().append("g")
     .attr("class","group")
-    .attr("id", d => "stack-group-" + d.id) // ID para control visual fácil
     .call(d3.drag()
         .on("start", (e,d)=>{
-            if(!d.visible) return; // No arrastrar si invisible
+            if(!d.visible) return;
             d.fx=d.x; d.fy=d.y; 
             d.isDragging = true;
         })
@@ -219,30 +212,33 @@ const groupSel = groupLayer.selectAll(".group").data(stackNodes).enter().append(
             (stacks[d.id]||[]).forEach(n=>{ n.x+=dx; n.y+=dy; });
         })
         .on("end", (e,d)=>{
-            d.fx=null; d.fy=null; 
-            d.isDragging = false;
+            d.fx=null; d.fy=null; d.isDragging = false;
         })
     );
 
 groupSel.append("rect").attr("class","group-rect");
 groupSel.append("text").attr("class","group-label").text(d=>d.id);
 
+// --- LINKS (DEPENDENCIAS) ---
+const linkSel = linkLayer.selectAll(".link")
+    .data(links)
+    .enter().append("line")
+    .attr("class", "link")
+    .attr("marker-end", "url(#arrowhead)"); // Añadir flecha
+
 // --- NODOS ---
 const nodeSel = nodeLayer.selectAll(".node").data(nodes).enter().append("g")
     .attr("class","node")
-    .attr("data-parent", d => d.parent) // Data attribute para filtrar visualmente
     .call(d3.drag()
         .on("start",(e,d)=>{ 
             const parent = stackNodes.find(s=>s.id===d.parent);
-            if(parent && !parent.visible) return; // Bloquear si invisible
-            
+            if(parent && !parent.visible) return;
             d.fx=d.x; d.fy=d.y; 
             if(parent) parent.isDragging = true;
         })
         .on("drag",(e,d)=>{
             const parent = stackNodes.find(s=>s.id===d.parent);
             if(parent && !parent.visible) return;
-
             d.fx = e.x; d.fy = e.y;
             if(parent){
                 const influence = 0.2; 
@@ -271,7 +267,7 @@ nodeSel.append("text").each(function(d){
 });
 
 // ----------------------
-// 5. Lógica del UI Flotante
+// 5. UI Logic
 // ----------------------
 function updateUIHeader() {
     const total = stackNodes.length;
@@ -280,99 +276,69 @@ function updateUIHeader() {
 }
 
 function updateVisibility(stackId, isVisible) {
-    // 1. Actualizar modelo de datos
+    // 1. Modelo
     const stack = stackNodes.find(s => s.id === stackId);
     if(stack) stack.visible = isVisible;
 
-    // 2. Actualizar visualización SVG
-    // Ocultar grupo del stack
-    groupSel.filter(d => d.id === stackId)
-        .style("display", isVisible ? "inline" : "none");
-    
-    // Ocultar nodos hijos
-    nodeSel.filter(d => d.parent === stackId)
-        .style("display", isVisible ? "inline" : "none");
+    // 2. Visuales Stacks y Nodos
+    groupSel.filter(d => d.id === stackId).style("display", isVisible ? "inline" : "none");
+    nodeSel.filter(d => d.parent === stackId).style("display", isVisible ? "inline" : "none");
 
-    // 3. Actualizar contador
+    // 3. Visuales Links (Lógica Cruzada)
+    // Un link se ve SOLO si el stack origen Y el stack destino son visibles
+    linkSel.style("display", l => {
+        const sParent = stackNodes.find(st => st.id === l.source.parent);
+        const tParent = stackNodes.find(st => st.id === l.target.parent);
+        if(sParent && tParent && sParent.visible && tParent.visible){
+            return "inline";
+        }
+        return "none";
+    });
+
     updateUIHeader();
 }
 
 function initUI() {
     const list = document.getElementById("ui-list");
     const header = document.getElementById("ui-header");
-    
-    // Toggle desplegable
     header.addEventListener("click", () => {
         list.classList.toggle("open");
-        const arrow = document.getElementById("ui-arrow");
-        arrow.innerText = list.classList.contains("open") ? "▲" : "▼";
+        document.getElementById("ui-arrow").innerText = list.classList.contains("open") ? "▲" : "▼";
     });
 
-    // Generar checkboxes
     stackNodes.forEach(s => {
-        const row = document.createElement("div");
-        row.className = "ui-row";
-
-        const chk = document.createElement("input");
-        chk.type = "checkbox";
-        chk.checked = s.visible;
-        chk.id = "chk-" + s.id;
-        
-        chk.addEventListener("change", (e) => {
-            updateVisibility(s.id, e.target.checked);
-        });
-
-        const lbl = document.createElement("label");
-        lbl.htmlFor = "chk-" + s.id;
-        lbl.innerText = s.label || s.id;
-        lbl.title = s.label || s.id; // Tooltip para nombres largos
-
-        row.appendChild(chk);
-        row.appendChild(lbl);
-        list.appendChild(row);
+        const row = document.createElement("div"); row.className = "ui-row";
+        const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = s.visible; chk.id = "chk-" + s.id;
+        chk.addEventListener("change", (e) => updateVisibility(s.id, e.target.checked));
+        const lbl = document.createElement("label"); lbl.htmlFor = "chk-" + s.id; lbl.innerText = s.label || s.id;
+        row.appendChild(chk); row.appendChild(lbl); list.appendChild(row);
     });
-
     updateUIHeader();
 }
-
-// Iniciar UI
 initUI();
 
-
 // ----------------------
-// 6. Tick Loop (Modificado para visibilidad)
+// 6. Tick Loop
 // ----------------------
 function ticked(){
-    // 1. FÍSICA ETERNA
+    // A. Física Stacks Interna
     stackNodes.forEach(stack=>{
-        // Si no es visible, no calculamos sus físicas internas
         if(!stack.visible) return;
-
         if(stack.nodeSim) stack.nodeSim.tick();
 
         const children = stacks[stack.id] || [];
         if(children.length){
             const equilibriumRadius = Math.sqrt(children.length) * 45;
-
             children.forEach(n => {
-                const dx = stack.x - n.x;
-                const dy = stack.y - n.y;
+                const dx = stack.x - n.x, dy = stack.y - n.y;
                 const dist = Math.sqrt(dx*dx + dy*dy);
-
                 if(dist > equilibriumRadius) {
-                    const pullStrength = 0.05; 
                     const overlap = dist - equilibriumRadius;
-                    const fx = (dx / dist) * overlap * pullStrength;
-                    const fy = (dy / dist) * overlap * pullStrength;
-                    n.vx += fx;
-                    n.vy += fy;
+                    n.vx += (dx / dist) * overlap * 0.05;
+                    n.vy += (dy / dist) * overlap * 0.05;
                 }
             });
-
-            // Re-centrado
-            const cx = d3.mean(children,d=>d.x);
-            const cy = d3.mean(children,d=>d.y);
-            
+            const cx = d3.mean(children,d=>d.x), cy = d3.mean(children,d=>d.y);
             if(!stack.isDragging) {
                 stack.x += (cx - stack.x) * 0.1;
                 stack.y += (cy - stack.y) * 0.1;
@@ -380,73 +346,60 @@ function ticked(){
         }
     });
 
-    // Colisiones Stacks
+    // B. Colisiones Stacks
     const paddingStack = 30;
     for(let i=0;i<stackNodes.length;i++){
         const a = stackNodes[i];
-        if(!a.visible) continue; // Salta si A es invisible
-
+        if(!a.visible) continue;
         const aBox = getStackBox(a);
-        const acx = aBox.x + aBox.w/2;
-        const acy = aBox.y + aBox.h/2;
+        const acx = aBox.x + aBox.w/2, acy = aBox.y + aBox.h/2;
         
         for(let j=i+1;j<stackNodes.length;j++){
             const b = stackNodes[j];
-            if(!b.visible) continue; // Salta si B es invisible
-
+            if(!b.visible) continue;
             const bBox = getStackBox(b);
-            const bcx = bBox.x + bBox.w/2;
-            const bcy = bBox.y + bBox.h/2;
-            const dx = bcx - acx;
-            const dy = bcy - acy;
+            const bcx = bBox.x + bBox.w/2, bcy = bBox.y + bBox.h/2;
+            const dx = bcx - acx, dy = bcy - acy;
             const ox = (aBox.w + bBox.w)/2 + paddingStack - Math.abs(dx);
             const oy = (aBox.h + bBox.h)/2 + paddingStack - Math.abs(dy);
             
             if(ox>0 && oy>0){
-                let moveA = 0.5;
-                let moveB = 0.5;
-
+                let moveA = 0.5, moveB = 0.5;
                 if(a.isDragging && !b.isDragging) { moveA = 0; moveB = 1; }
                 else if(!a.isDragging && b.isDragging) { moveA = 1; moveB = 0; }
                 
                 if(ox<oy){
                     const sx = Math.sign(dx)*ox;
-                    const shiftA = sx * moveA;
-                    const shiftB = sx * moveB;
-                    a.x -= shiftA; (stacks[a.id]||[]).forEach(n=>{ n.x-=shiftA; });
-                    b.x += shiftB; (stacks[b.id]||[]).forEach(n=>{ n.x+=shiftB; });
+                    a.x -= sx * moveA; (stacks[a.id]||[]).forEach(n=>{ n.x-=sx*moveA; });
+                    b.x += sx * moveB; (stacks[b.id]||[]).forEach(n=>{ n.x+=sx*moveB; });
                 } else {
                     const sy = Math.sign(dy)*oy;
-                    const shiftA = sy * moveA;
-                    const shiftB = sy * moveB;
-                    a.y -= shiftA; (stacks[a.id]||[]).forEach(n=>{ n.y-=shiftA; });
-                    b.y += shiftB; (stacks[b.id]||[]).forEach(n=>{ n.y+=shiftB; });
+                    a.y -= sy * moveA; (stacks[a.id]||[]).forEach(n=>{ n.y-=sy*moveA; });
+                    b.y += sy * moveB; (stacks[b.id]||[]).forEach(n=>{ n.y+=sy*moveB; });
                 }
             }
         }
     }
 
-    // Actualizar SVG (Solo si es visible, aunque display:none ya maneja visuales)
-    // Dejamos que actualice posiciones para que cuando reaparezca esté en su sitio actualizado
+    // C. Render Stacks
     groupSel.each(function(d){
-        if(!d.visible) return; // Optimización ligera en render
-
+        if(!d.visible) return;
         const box = getStackBox(d);
-        d3.select(this)
-            .attr("transform",`translate(${d.x},${d.y})`)
-            .select("rect")
-            .attr("x",box.x-d.x).attr("y",box.y-d.y)
-            .attr("width",box.w).attr("height",box.h);
-        d3.select(this).select("text")
-            .attr("x",(box.x-d.x)+10)
-            .attr("y",(box.y-d.y)+20);
+        d3.select(this).attr("transform",`translate(${d.x},${d.y})`)
+            .select("rect").attr("x",box.x-d.x).attr("y",box.y-d.y).attr("width",box.w).attr("height",box.h);
+        d3.select(this).select("text").attr("x",(box.x-d.x)+10).attr("y",(box.y-d.y)+20);
     });
 
+    // D. Render Links (Simplemente unir source y target)
+    linkSel
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+    // E. Render Nodos
     nodeSel
-        .filter(d => {
-            const p = stackNodes.find(s=>s.id === d.parent);
-            return p && p.visible;
-        })
+        .filter(d => { const p = stackNodes.find(s=>s.id === d.parent); return p && p.visible; })
         .attr("transform", d=>`translate(${d.x},${d.y})`);
 
     requestAnimationFrame(ticked);
