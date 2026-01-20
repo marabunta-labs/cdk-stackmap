@@ -79,6 +79,11 @@
 
     <div id="paper"></div>
 
+    <!-- Minimap overlay -->
+    <div id="minimap" style="position:fixed;right:24px;bottom:24px;width:220px;height:140px;background:rgba(30,30,30,0.95);border:2px solid #4fc3f7;border-radius:10px;z-index:200;box-shadow:0 2px 12px #0008;pointer-events:none;">
+        <svg id="minimap-svg" width="220" height="140" style="display:block;"></svg>
+    </div>
+
     <script>
                     // --- ÁREA LIMITADA DEL GRAFO ---
                     const GRAPH_AREA = { minX: 0, minY: 0, maxX: 10000, maxY: 6000 };
@@ -88,6 +93,53 @@
                         return { x: clampedX, y: clampedY };
                     }
         $(document).ready(function() {
+                                                // --- MINIMAPA ---
+                                                function renderMinimap() {
+                                                    const svg = document.getElementById('minimap-svg');
+                                                    // Clear previous
+                                                    while (svg.firstChild) svg.removeChild(svg.firstChild);
+                                                    // Area border
+                                                    const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
+                                                    const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
+                                                    const scaleX = 200 / areaW;
+                                                    const scaleY = 120 / areaH;
+                                                    // Draw area border
+                                                    const border = document.createElementNS('http://www.w3.org/2000/svg','rect');
+                                                    border.setAttribute('x', 10);
+                                                    border.setAttribute('y', 10);
+                                                    border.setAttribute('width', 200);
+                                                    border.setAttribute('height', 120);
+                                                    border.setAttribute('stroke', '#4fc3f7');
+                                                    border.setAttribute('stroke-width', '2');
+                                                    border.setAttribute('fill', 'none');
+                                                    svg.appendChild(border);
+                                                    // Draw stacks
+                                                    stackElements.forEach((stack, idx) => {
+                                                        if (stack.get('hidden')) return;
+                                                        const bbox = stack.getBBox();
+                                                        const x = 10 + (bbox.x - GRAPH_AREA.minX) * scaleX;
+                                                        const y = 10 + (bbox.y - GRAPH_AREA.minY) * scaleY;
+                                                        const w = bbox.width * scaleX;
+                                                        const h = bbox.height * scaleY;
+                                                        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+                                                        rect.setAttribute('x', x);
+                                                        rect.setAttribute('y', y);
+                                                        rect.setAttribute('width', w);
+                                                        rect.setAttribute('height', h);
+                                                        rect.setAttribute('fill', STACK_COLORS[idx % STACK_COLORS.length]);
+                                                        rect.setAttribute('fill-opacity', '0.7');
+                                                        rect.setAttribute('stroke', '#fff');
+                                                        rect.setAttribute('stroke-width', '1');
+                                                        svg.appendChild(rect);
+                                                    });
+                                                }
+
+                                                // Render minimap on every animation frame
+                                                function minimapLoop() {
+                                                    renderMinimap();
+                                                    requestAnimationFrame(minimapLoop);
+                                                }
+                                                requestAnimationFrame(minimapLoop);
                                     // Centrar la vista al inicio
                                     setTimeout(() => {
                                         const targetScale = 0.4;
