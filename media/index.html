@@ -556,12 +556,19 @@
                 const oldScale = paper.scale().sx;
                 const newScale = oldScale + (delta * zoomSpeed);
                 if (newScale < 0.2 || newScale > 4) return;
-                const beta = oldScale / newScale;
-                const ax = x - (x * beta);
-                const ay = y - (y * beta);
+                // Calcular el punto lógico bajo el cursor antes del zoom
                 const tr = paper.translate();
-                paper.translate(tr.tx - ax * newScale, tr.ty - ay * newScale);
+                const logicalX = (x - tr.tx) / oldScale;
+                const logicalY = (y - tr.ty) / oldScale;
+                // Aplicar el nuevo zoom
                 paper.scale(newScale, newScale);
+                // Calcular nueva posición de ese punto bajo el nuevo zoom
+                const newScreenX = logicalX * newScale + tr.tx;
+                const newScreenY = logicalY * newScale + tr.ty;
+                // Ajustar translate para que el punto bajo el cursor permanezca centrado
+                const dx = x - newScreenX;
+                const dy = y - newScreenY;
+                paper.translate(tr.tx + dx, tr.ty + dy);
             }, { passive: false });
 
             let panning = false, panStart = {x:0, y:0};
