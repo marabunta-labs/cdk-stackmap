@@ -80,8 +80,8 @@
     <div id="paper"></div>
 
     <!-- Minimap overlay -->
-    <div id="minimap" style="position:fixed;right:24px;bottom:24px;width:220px;height:140px;background:rgba(30,30,30,0.95);border:2px solid #4fc3f7;border-radius:10px;z-index:200;box-shadow:0 2px 12px #0008;pointer-events:none;">
-        <svg id="minimap-svg" width="220" height="140" style="display:block;"></svg>
+    <div id="minimap" style="position:fixed;right:24px;bottom:24px;width:220px;height:140px;background:rgba(30,30,30,0.95);border:2px solid #4fc3f7;border-radius:10px;z-index:200;box-shadow:0 2px 12px #0008;pointer-events:auto;">
+        <svg id="minimap-svg" width="220" height="140" style="display:block;cursor:pointer;pointer-events:auto;"></svg>
     </div>
 
     <script>
@@ -93,6 +93,47 @@
                         return { x: clampedX, y: clampedY };
                     }
         $(document).ready(function() {
+            // --- INTERACTIVIDAD DEL MINIMAPA: asegurar eventos y robustez ---
+            $('#minimap').on('mousemove', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                $('#minimap-svg').css('cursor', 'pointer');
+                const rect = this.getBoundingClientRect();
+                const mx = e.clientX - rect.left - 10;
+                const my = e.clientY - rect.top - 10;
+                window._minimapPreview = { mx, my };
+            });
+            $('#minimap').on('mouseleave', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                $('#minimap-svg').css('cursor', 'default');
+                window._minimapPreview = null;
+            });
+            $('#minimap').on('mousedown', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+            });
+            $('#minimap').on('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Calcular posición lógica en el área
+                const rect = this.getBoundingClientRect();
+                const mx = e.clientX - rect.left - 10;
+                const my = e.clientY - rect.top - 10;
+                const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
+                const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
+                const scaleX = 200 / areaW;
+                                                                const scaleY = 120 / areaH;
+                                                                // Convertir a coordenadas del área
+                                                                const logicalX = mx / scaleX + GRAPH_AREA.minX;
+                                                                const logicalY = my / scaleY + GRAPH_AREA.minY;
+                                                                // Centrar la vista en ese punto
+                                                                const targetScale = paper.scale().sx;
+                                                                const paperRect = paper.el.getBoundingClientRect();
+                                                                const centerX = paperRect.width / 2;
+                                                                const centerY = paperRect.height / 2;
+                                                                paper.translate(centerX - logicalX * targetScale, centerY - logicalY * targetScale);
+                                                            });
                                                 // --- MINIMAPA ---
                                                 function renderMinimap() {
                                                     const svg = document.getElementById('minimap-svg');
@@ -132,6 +173,90 @@
                                                         rect.setAttribute('stroke-width', '1');
                                                         svg.appendChild(rect);
                                                     });
+
+                                                    // Draw viewport rectangle
+                                                    const paperRect = paper.el.getBoundingClientRect();
+                                                    const scale = paper.scale().sx;
+                                                    const tr = paper.translate();
+                                                    // Top-left logical coordinates
+                                                    const logicalX = (-tr.tx) / scale;
+                                                    const logicalY = (-tr.ty) / scale;
+                                                    // Size in logical coordinates
+                                                    const logicalW = paperRect.width / scale;
+                                                    const logicalH = paperRect.height / scale;
+                                                    // Convert to minimap coordinates
+                                                    const minix = 10 + (logicalX - GRAPH_AREA.minX) * scaleX;
+                                                    const miniy = 10 + (logicalY - GRAPH_AREA.minY) * scaleY;
+                                                    const miniw = logicalW * scaleX;
+                                                    const minih = logicalH * scaleY;
+                                                    const viewRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+                                                    viewRect.setAttribute('x', minix);
+                                                    viewRect.setAttribute('y', miniy);
+                                                    viewRect.setAttribute('width', miniw);
+                                                    viewRect.setAttribute('height', minih);
+                                                    viewRect.setAttribute('fill', '#4fc3f7');
+                                                    viewRect.setAttribute('fill-opacity', '0.15');
+                                                    viewRect.setAttribute('stroke', '#4fc3f7');
+                                                    viewRect.setAttribute('stroke-width', '2');
+                                                    svg.appendChild(viewRect);
+
+                                                    // Draw preview rectangle if hovering minimap
+                                                    if (window._minimapPreview) {
+                                                        const { mx, my } = window._minimapPreview;
+                                                        const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
+                                                        const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
+                                                        const scaleX = 200 / areaW;
+                                                        const scaleY = 120 / areaH;
+                                                        const targetScale = paper.scale().sx;
+                                                        const paperRect = paper.el.getBoundingClientRect();
+                                                        const logicalW = paperRect.width / targetScale;
+                                                        const logicalH = paperRect.height / targetScale;
+                                                        const logicalX = mx / scaleX + GRAPH_AREA.minX - logicalW/2;
+                                                        const logicalY = my / scaleY + GRAPH_AREA.minY - logicalH/2;
+                                                        const minix2 = 10 + (logicalX - GRAPH_AREA.minX) * scaleX;
+                                                        const miniy2 = 10 + (logicalY - GRAPH_AREA.minY) * scaleY;
+                                                        const previewRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+                                                        previewRect.setAttribute('x', minix2);
+                                                        previewRect.setAttribute('y', miniy2);
+                                                        previewRect.setAttribute('width', logicalW * scaleX);
+                                                        previewRect.setAttribute('height', logicalH * scaleY);
+                                                        previewRect.setAttribute('fill', '#fff');
+                                                        previewRect.setAttribute('fill-opacity', '0.10');
+                                                        previewRect.setAttribute('stroke', '#fff');
+                                                        previewRect.setAttribute('stroke-width', '2');
+                                                        svg.appendChild(previewRect);
+                                                    }
+                                                            // --- INTERACTIVIDAD DEL MINIMAPA ---
+                                                            $('#minimap-svg').on('mousemove', function(e) {
+                                                                $(this).css('cursor', 'pointer');
+                                                                const rect = this.getBoundingClientRect();
+                                                                const mx = e.clientX - rect.left - 10;
+                                                                const my = e.clientY - rect.top - 10;
+                                                                window._minimapPreview = { mx, my };
+                                                            });
+                                                            $('#minimap-svg').on('mouseleave', function(e) {
+                                                                $(this).css('cursor', 'default');
+                                                                window._minimapPreview = null;
+                                                            });
+                                                            $('#minimap-svg').on('click', function(e) {
+                                                                const rect = this.getBoundingClientRect();
+                                                                const mx = e.clientX - rect.left - 10;
+                                                                const my = e.clientY - rect.top - 10;
+                                                                const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
+                                                                const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
+                                                                const scaleX = 200 / areaW;
+                                                                const scaleY = 120 / areaH;
+                                                                const targetScale = paper.scale().sx;
+                                                                const paperRect = paper.el.getBoundingClientRect();
+                                                                const logicalW = paperRect.width / targetScale;
+                                                                const logicalH = paperRect.height / targetScale;
+                                                                // Center the view so the previewed rectangle is the new viewport
+                                                                const logicalX = mx / scaleX + GRAPH_AREA.minX - logicalW/2;
+                                                                const logicalY = my / scaleY + GRAPH_AREA.minY - logicalH/2;
+                                                                const centerX = paperRect.width / 2;
+                                                                const centerY = paperRect.height / 2;
+                                                                paper.translate(centerX - (logicalX + logicalW/2) * targetScale, centerY - (logicalY + logicalH/2) * targetScale);
+                                                            });
                                                 }
 
                                                 // Render minimap on every animation frame
