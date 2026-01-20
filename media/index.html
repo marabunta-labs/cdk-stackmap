@@ -73,17 +73,64 @@
         </div>
         <div id="stack-list-container">
             <div id="stack-list"></div>
-            <div id="status-bar">
-                <span>Motor:</span> <span style="color:#00ffaa">Estable (Sin Rebote)</span>
-            </div>
         </div>
+        <button id="center-view-btn" style="margin:18px 15px 10px 15px;padding:8px 18px;border:none;border-radius:5px;background:#4fc3f7;color:#222;font-weight:600;cursor:pointer;font-size:15px;width:92%;align-self:center;">Centrar vista</button>
     </div>
 
     <div id="paper"></div>
 
     <script>
+                    // --- ÁREA LIMITADA DEL GRAFO ---
+                    const GRAPH_AREA = { minX: 0, minY: 0, maxX: 10000, maxY: 6000 };
+                    function clampPosition(x, y, width, height) {
+                        const clampedX = Math.max(GRAPH_AREA.minX, Math.min(x, GRAPH_AREA.maxX - width));
+                        const clampedY = Math.max(GRAPH_AREA.minY, Math.min(y, GRAPH_AREA.maxY - height));
+                        return { x: clampedX, y: clampedY };
+                    }
         $(document).ready(function() {
-            // ...existing code...
+                                    // Centrar la vista al inicio
+                                    setTimeout(() => {
+                                        const targetScale = 0.4;
+                                        paper.scale(targetScale, targetScale);
+                                        const areaCenterX = (GRAPH_AREA.maxX - GRAPH_AREA.minX) / 2;
+                                        const areaCenterY = (GRAPH_AREA.maxY - GRAPH_AREA.minY) / 2;
+                                        const paperRect = paper.el.getBoundingClientRect();
+                                        const centerX = paperRect.width / 2;
+                                        const centerY = paperRect.height / 2;
+                                        paper.translate(centerX - areaCenterX * targetScale, centerY - areaCenterY * targetScale);
+                                    }, 0);
+                        // --- DIBUJAR LÍMITES DEL ÁREA DEL GRAFO ---
+                        // Añadir un rectángulo visual para mostrar los límites
+                        setTimeout(() => {
+                            const areaBorder = new joint.shapes.standard.Rectangle();
+                            areaBorder.position(GRAPH_AREA.minX, GRAPH_AREA.minY);
+                            areaBorder.resize(GRAPH_AREA.maxX - GRAPH_AREA.minX, GRAPH_AREA.maxY - GRAPH_AREA.minY);
+                            areaBorder.attr({
+                                body: {
+                                    fill: 'none',
+                                    stroke: '#4fc3f7',
+                                    strokeWidth: 3,
+                                    pointerEvents: 'none'
+                                },
+                                label: { text: '', fill: 'none' }
+                            });
+                            areaBorder.addTo(graph);
+                            paper.findViewByModel(areaBorder)?.toBack();
+                        }, 0);
+            // --- Botón para centrar la vista ---
+            $('#center-view-btn').on('click', function() {
+                // Centrar y alejar la vista en el centro del área
+                const targetScale = 0.4;
+                paper.scale(targetScale, targetScale);
+                // Centro del área definida
+                const areaCenterX = (GRAPH_AREA.maxX - GRAPH_AREA.minX) / 2;
+                const areaCenterY = (GRAPH_AREA.maxY - GRAPH_AREA.minY) / 2;
+                const paperRect = paper.el.getBoundingClientRect();
+                const centerX = paperRect.width / 2;
+                const centerY = paperRect.height / 2;
+                // Ajustar translate para centrar el área considerando el nuevo zoom
+                paper.translate(centerX - areaCenterX * targetScale, centerY - areaCenterY * targetScale);
+            });
 
             // --- 1. CONFIGURACIÓN ---
             const namespace = joint.shapes;
@@ -149,6 +196,9 @@
                 listEl.append(row);
             });
             updateCounter();
+
+            // Colapsar el panel de stacks al inicio
+            $('#ui').addClass('collapsed');
 
             $('#ui-header').on('click', () => $('#ui').toggleClass('collapsed'));
 
@@ -280,17 +330,22 @@
                         paper.on('link:mouseleave', function() {
                             hideTooltip();
                         });
-            const startX = 200;
-            let startY = 200;
-
-            // Crear stacks distribuidos en cuadrícula para evitar fila vertical
+            // Calcular el centro del área para colocar los stacks y nodos
+            const areaCenterX = (GRAPH_AREA.maxX - GRAPH_AREA.minX) / 2;
+            const areaCenterY = (GRAPH_AREA.maxY - GRAPH_AREA.minY) / 2;
+            // Ajustar el inicio para que la cuadrícula esté centrada
             const stacksPerRow = Math.ceil(Math.sqrt(stacks.length));
-            const STACK_X_SPACING = 480; // Mayor separación horizontal
-            const STACK_Y_SPACING = 420; // Mayor separación vertical
+            const STACK_X_SPACING = 480;
+            const STACK_Y_SPACING = 420;
+            const gridWidth = stacksPerRow * STACK_X_SPACING;
+            const gridHeight = Math.ceil(stacks.length / stacksPerRow) * STACK_Y_SPACING;
+            const startX = areaCenterX - gridWidth / 2;
+            let startY = areaCenterY - gridHeight / 2;
+
             stacks.forEach((stackData, i) => {
                 const col = i % stacksPerRow;
                 const row = Math.floor(i / stacksPerRow);
-                const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30; // más jitter
+                const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30;
                 const y = startY + row * STACK_Y_SPACING + Math.random() * 60 - 30;
                 const headerH = 35;
                 const width = 240;
@@ -322,11 +377,10 @@
                 const resHeight = 28;
                 const cx = x + width / 2 - resWidth / 2;
                 const cy = y + headerH + (resAreaH / 2) - resHeight / 2;
-                const spiralStep = 18; // distancia entre vueltas
-                const spiralAngleStep = Math.PI / 5; // ángulo entre nodos
+                const spiralStep = 18;
+                const spiralAngleStep = Math.PI / 5;
                 childResources.forEach((res, idx) => {
                     const resNode = new joint.shapes.standard.Rectangle();
-                    // Espiral: r crece con idx, ángulo también
                     const angle = idx * spiralAngleStep;
                     const radius = spiralStep * (1 + idx / (2 * Math.PI));
                     const rx = cx + Math.cos(angle) * radius;
@@ -337,14 +391,13 @@
                         body: { fill: '#333', stroke: headerColor, strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
                         label: { text: res.data.label, fill: '#ddd', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
                     });
-                    // Asignar los datos AWS al nodo visual para tooltips
                     resNode.set('data', res.data);
                     stack.embed(resNode);
                     resNode.addTo(graph);
-                    res._cell = resNode; // Guardar referencia para enlaces
+                    res._cell = resNode;
                 });
                 stack.fitEmbeds({ padding: 25 });
-                stack._cell = stack; // Para enlaces
+                stack._cell = stack;
             });
 
             // Crear enlaces
@@ -400,8 +453,18 @@
                     // Mover stack completo
                     const dx = x - dragStartPointer.x;
                     const dy = y - dragStartPointer.y;
-                    draggingSingleNodeStack.position(dragStartStackPos.x + dx, dragStartStackPos.y + dy);
+                    let newX = dragStartStackPos.x + dx;
+                    let newY = dragStartStackPos.y + dy;
+                    const bbox = draggingSingleNodeStack.getBBox();
+                    const clamped = clampPosition(newX, newY, bbox.width, bbox.height);
+                    draggingSingleNodeStack.position(clamped.x, clamped.y);
                     draggingSingleNodeStack.fitEmbeds({ padding: 25 });
+                } else if (draggedElementId) {
+                    // Clamp dragged node position
+                    const model = ev.model;
+                    const bbox = model.getBBox();
+                    const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                    model.position(clamped.x, clamped.y);
                 }
             });
 
@@ -520,6 +583,10 @@
 
                         if (fx !== 0 || fy !== 0) {
                             nodeA.translate(fx, fy);
+                            // Clamp position after translation
+                            const bbox = nodeA.getBBox();
+                            const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                            nodeA.position(clamped.x, clamped.y);
                             stackMoved = true;
                         }
                     }
@@ -575,10 +642,104 @@
                         anyMoved = true;
                     }
                 });
+                // Clamp all embedded nodes inside their parent stack after physics
+                stackElements.forEach(stack => {
+                    if (stack.get('hidden')) return;
+                    const bbox = stack.getBBox();
+                    stack.getEmbeddedCells().forEach(child => {
+                        const childBox = child.getBBox();
+                        // Calculate relative position inside stack
+                        let relX = childBox.x - bbox.x;
+                        let relY = childBox.y - bbox.y;
+                        relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
+                        relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
+                        child.position(bbox.x + relX, bbox.y + relY);
+                    });
+                });
                 return anyMoved;
             }
 
             function resolveStackCollisions() {
+                                // --- COLISIÓN RÍGIDA DE STACKS CON EL BORDE DEL ÁREA ---
+                                // 1. Clamp stacks to area border (rigid, no deformation)
+                                stackElements.forEach(stack => {
+                                    if (stack.get('hidden')) return;
+                                    const bbox = stack.getBBox();
+                                    let newX = bbox.x;
+                                    let newY = bbox.y;
+                                    const borderPad = 10;
+                                    // Clamp stack position so it cannot cross the border
+                                    newX = Math.max(GRAPH_AREA.minX + borderPad, Math.min(newX, GRAPH_AREA.maxX - borderPad - bbox.width));
+                                    newY = Math.max(GRAPH_AREA.minY + borderPad, Math.min(newY, GRAPH_AREA.maxY - borderPad - bbox.height));
+                                    if (newX !== bbox.x || newY !== bbox.y) {
+                                        stack.position(newX, newY);
+                                    }
+                                    // Clamp all embedded nodes inside the stack after border collision
+                                    const newBox = stack.getBBox();
+                                    stack.getEmbeddedCells().forEach(child => {
+                                        const childBox = child.getBBox();
+                                        let relX = childBox.x - newBox.x;
+                                        let relY = childBox.y - newBox.y;
+                                        relX = Math.max(0, Math.min(relX, newBox.width - childBox.width));
+                                        relY = Math.max(0, Math.min(relY, newBox.height - childBox.height));
+                                        child.position(newBox.x + relX, newBox.y + relY);
+                                    });
+                                });
+
+                                // 2. Enforce stack-to-stack collision after border clamping
+                                for (let i = 0; i < stackElements.length; i++) {
+                                    const A = stackElements[i];
+                                    if (A.get('hidden')) continue;
+                                    for (let j = i + 1; j < stackElements.length; j++) {
+                                        const B = stackElements[j];
+                                        if (B.get('hidden')) continue;
+                                        const bA = A.getBBox();
+                                        const bB = B.getBBox();
+                                        const padding = 15;
+                                        if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
+                                            bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
+                                            const cA = bA.center();
+                                            const cB = bB.center();
+                                            let dx = cA.x - cB.x;
+                                            let dy = cA.y - cB.y;
+                                            if (dx === 0 && dy === 0) dx = 1;
+                                            const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
+                                            const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
+                                            let mx = 0, my = 0;
+                                            if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
+                                            else my = penY * (dy > 0 ? 1 : -1);
+                                            if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
+                                            const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
+                                            const bDrag = (B.id === draggedElementId || B.getEmbeddedCells().some(c => c.id === draggedElementId));
+                                            const f = 0.8;
+                                            function clampStackAndChildren(stack) {
+                                                const bbox = stack.getBBox();
+                                                const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                                                stack.position(clamped.x, clamped.y);
+                                                stack.getEmbeddedCells().forEach(child => {
+                                                    const childBox = child.getBBox();
+                                                    let relX = childBox.x - clamped.x;
+                                                    let relY = childBox.y - clamped.y;
+                                                    relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
+                                                    relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
+                                                    child.position(clamped.x + relX, clamped.y + relY);
+                                                });
+                                            }
+                                            if (aDrag) {
+                                                B.translate(-mx * f, -my * f);
+                                                clampStackAndChildren(B);
+                                            } else if (bDrag) {
+                                                A.translate(mx * f, my * f);
+                                                clampStackAndChildren(A);
+                                            } else {
+                                                A.translate(mx * 0.5 * f, my * 0.5 * f);
+                                                B.translate(-mx * 0.5 * f, -my * 0.5 * f);
+                                                clampStackAndChildren(A);
+                                                clampStackAndChildren(B);
+                                            }
+                                        }
+                                    }
+                                }
                 const padding = 15; // Padding generoso para evitar contacto visual
 
                 for (let i = 0; i < stackElements.length; i++) {
@@ -594,7 +755,6 @@
 
                         if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
                             bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
-                            
                             const cA = bA.center();
                             const cB = bB.center();
                             let dx = cA.x - cB.x;
@@ -609,20 +769,41 @@
                             else my = penY * (dy > 0 ? 1 : -1);
 
                             // ANTI-VIBRACIÓN STACKS
-                            // Umbral alto (3px). Si el choque es menor a 3px, lo ignoramos.
                             if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
 
                             const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
                             const bDrag = (B.id === draggedElementId || B.getEmbeddedCells().some(c => c.id === draggedElementId));
 
-                            // Respuesta rápida para separar inmediatamente (0.8) en lugar de gradual
-                            const f = 0.8; 
+                            const f = 0.8;
 
-                            if (aDrag) B.translate(-mx * f, -my * f);
-                            else if (bDrag) A.translate(mx * f, my * f);
-                            else {
+                            function clampStackAndChildren(stack) {
+                                const bbox = stack.getBBox();
+                                const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                                stack.position(clamped.x, clamped.y);
+                                // Clamp all embedded nodes inside the stack
+                                stack.getEmbeddedCells().forEach(child => {
+                                    const childBox = child.getBBox();
+                                    // Calculate relative position inside stack
+                                    let relX = childBox.x - bbox.x;
+                                    let relY = childBox.y - bbox.y;
+                                    // Clamp child so it stays inside stack
+                                    relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
+                                    relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
+                                    child.position(clamped.x + relX, clamped.y + relY);
+                                });
+                            }
+
+                            if (aDrag) {
+                                B.translate(-mx * f, -my * f);
+                                clampStackAndChildren(B);
+                            } else if (bDrag) {
+                                A.translate(mx * f, my * f);
+                                clampStackAndChildren(A);
+                            } else {
                                 A.translate(mx * 0.5 * f, my * 0.5 * f);
                                 B.translate(-mx * 0.5 * f, -my * 0.5 * f);
+                                clampStackAndChildren(A);
+                                clampStackAndChildren(B);
                             }
                         }
                     }
@@ -647,7 +828,7 @@
                 const delta = e.deltaY < 0 ? 1 : -1;
                 const oldScale = paper.scale().sx;
                 const newScale = oldScale + (delta * zoomSpeed);
-                if (newScale < 0.2 || newScale > 4) return;
+                if (newScale < 0.1 || newScale > 4) return;
                 // Calcular el punto lógico bajo el cursor antes del zoom
                 const tr = paper.translate();
                 const logicalX = (x - tr.tx) / oldScale;
