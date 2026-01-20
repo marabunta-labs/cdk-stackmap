@@ -322,35 +322,26 @@
 
 
             // --- Sistema de enfriamiento simple: solo detener si no hay movimiento ---
-            let stableFrames = 0;
-            const MAX_STABLE = 60; // frames estables antes de parar (más paciencia)
             function physicsLoop() {
-                let moved = resolveInternalPhysics();
+                resolveInternalPhysics();
                 resolveStackCollisions();
-                if (moved) {
-                    stableFrames = 0;
-                } else {
-                    stableFrames++;
-                }
-                if (stableFrames < MAX_STABLE) {
-                    requestAnimationFrame(physicsLoop);
-                }
+                requestAnimationFrame(physicsLoop);
             }
 
             function resolveInternalPhysics() {
                 let anyMoved = false;
                 
                 // --- AJUSTES DE FÍSICA ---
-                // Mayor estabilidad, separación clara y seguimiento rápido
-                const REPULSION_DIST = 200;    // Distancia de influencia de repulsión
-                const REPULSION_STR = 25.0;    // Fuerza de repulsión (ajustada para estabilidad)
-                const ATTRACTION_DIST = 100;   // Longitud óptima de enlaces
-                const ATTRACTION_STR = 0.05;   // Fuerza del enlace (muelle)
-                const CENTER_PULL = 0.06;      // Cohesión al centro (MÁS ALTA para seguimiento rápido)
-                const COLLISION_PADDING = 30;  // Espacio mínimo garantizado entre nodos
-                const DAMPING = 0.4;           // Amortiguación fuerte (0.0 muy lento -> 1.0 sin fricción)
-                const STOP_THRESHOLD = 0.8;    // Umbral para detener vibración
-                const MAX_SPEED = 12;          // Velocidad máxima
+                // Ajustados para maximizar el desenredado (Layout Planar) sin perder cohesión
+                const REPULSION_DIST = 450;    //200;    // Distancia de influencia de repulsión Rango muy alto para que los nodos se perciban desde lejos
+                const REPULSION_STR = 80.0;    //25.0;    // Fuerza de repulsión (ajustada para estabilidad) Fuerza de repulsión muy fuerte para abrir el grafo
+                const ATTRACTION_DIST = 130;   //100;   // Longitud óptima de enlaces Enlaces más largos para dar espacio a que se crucen menos
+                const ATTRACTION_STR = 0.02;   //0.05;   // Fuerza del enlace (muelle) Atracción de enlaces suave para no forzar nudos
+                const CENTER_PULL = 0.035;     //0.06;      // Cohesión al centro (MÁS ALTA para seguimiento rápido) Cohesión equilibrada: sigue rápido pero permite expansión
+                const COLLISION_PADDING = 30;  //30;  // Espacio mínimo garantizado entre nodos Espaciado físico
+                const DAMPING = 0.5;           //0.4;           // Amortiguación fuerte (0.0 muy lento -> 1.0 sin fricción) Menor momentum para evitar orbitar (más estable)
+                const STOP_THRESHOLD = 0.6;    //0.8;    // Umbral para detener vibración
+                const MAX_SPEED = 15;          //12;       Permitir movimientos rápidos para desenredarse
                 
                 stackElements.forEach(stack => {
                     if (stack.get('hidden')) return;
@@ -373,7 +364,7 @@
                         let fx = 0, fy = 0;
                         const aCenter = nodeA.getBBox().center();
 
-                        // A. Repulsión (para verlos separados)
+                        // A. Repulsión (Muy fuerte para desenredar)
                         for (let j = 0; j < children.length; j++) {
                             if (i === j) continue;
                             const nodeB = children[j];
@@ -384,8 +375,10 @@
                             let dist = Math.sqrt(distSq) || 0.1;
                             
                             if (dist < REPULSION_DIST) {
-                                // Fuerza lineal simple (más estable que 1/dist)
-                                let force = (1 - dist / REPULSION_DIST) * REPULSION_STR;
+                                // Usamos una fuerza cuadrática invertida modificada para "empujar duro" al principio
+                                // pero mantener influencia lejos.
+                                const factor = (1 - dist / REPULSION_DIST);
+                                let force = factor * factor * REPULSION_STR;
                                 fx += (dx / dist) * force;
                                 fy += (dy / dist) * force;
                             }
@@ -407,7 +400,7 @@
                                 let dist = Math.sqrt(dx*dx + dy*dy) || 0.1;
                                 
                                 if (dist > ATTRACTION_DIST) { 
-                                    let force = (dist - ATTRACTION_DIST) * ATTRACTION_STR;
+                                    const force = (dist - ATTRACTION_DIST) * ATTRACTION_STR;
                                     fx += (dx / dist) * force;
                                     fy += (dy / dist) * force;
                                 }
@@ -415,7 +408,6 @@
                         });
 
                         // C. Cohesión al Centro (Seguimiento Stack)
-                        // Para que stacks grandes se muevan rápido, todos los nodos deben querer ir al centro
                         fx += (cx - aCenter.x) * CENTER_PULL;
                         fy += (cy - aCenter.y) * CENTER_PULL;
 
@@ -430,7 +422,7 @@
                             fy = (fy / speed) * MAX_SPEED;
                         }
 
-                        // Deadzone (elimina microvibración)
+                        // Deadzone 
                         if (Math.abs(fx) < STOP_THRESHOLD) fx = 0;
                         if (Math.abs(fy) < STOP_THRESHOLD) fy = 0;
 
