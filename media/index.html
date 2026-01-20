@@ -339,39 +339,59 @@
 
             function resolveInternalPhysics() {
                 let anyMoved = false;
+                
+                // --- AJUSTES DE FÍSICA ---
+                // Mayor estabilidad, separación clara y seguimiento rápido
+                const REPULSION_DIST = 200;    // Distancia de influencia de repulsión
+                const REPULSION_STR = 25.0;    // Fuerza de repulsión (ajustada para estabilidad)
+                const ATTRACTION_DIST = 100;   // Longitud óptima de enlaces
+                const ATTRACTION_STR = 0.05;   // Fuerza del enlace (muelle)
+                const CENTER_PULL = 0.06;      // Cohesión al centro (MÁS ALTA para seguimiento rápido)
+                const COLLISION_PADDING = 30;  // Espacio mínimo garantizado entre nodos
+                const DAMPING = 0.4;           // Amortiguación fuerte (0.0 muy lento -> 1.0 sin fricción)
+                const STOP_THRESHOLD = 0.8;    // Umbral para detener vibración
+                const MAX_SPEED = 12;          // Velocidad máxima
+                
                 stackElements.forEach(stack => {
                     if (stack.get('hidden')) return;
 
                     const children = stack.getEmbeddedCells();
                     if (children.length === 0) return;
 
-                    // Calcular centro de masa
+                    // Calcular centro de masa actual
                     let cx = 0, cy = 0;
                     children.forEach(c => { const pt = c.getBBox().center(); cx += pt.x; cy += pt.y; });
                     cx /= children.length; cy /= children.length;
 
                     let stackMoved = false;
 
-                    // --- LAYOUT FORZADO (force-directed) ---
+                    // --- 1. FUERZAS SUAVES (Layout) ---
                     for (let i = 0; i < children.length; i++) {
                         const nodeA = children[i];
                         if (nodeA.id === draggedElementId) continue;
+                        
                         let fx = 0, fy = 0;
                         const aCenter = nodeA.getBBox().center();
+
+                        // A. Repulsión (para verlos separados)
                         for (let j = 0; j < children.length; j++) {
                             if (i === j) continue;
                             const nodeB = children[j];
                             const bCenter = nodeB.getBBox().center();
                             let dx = aCenter.x - bCenter.x;
                             let dy = aCenter.y - bCenter.y;
-                            let dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                            if (dist < 110) {
-                                let repulse = 13.5 / dist;
-                                fx += dx * repulse;
-                                fy += dy * repulse;
+                            let distSq = dx*dx + dy*dy;
+                            let dist = Math.sqrt(distSq) || 0.1;
+                            
+                            if (dist < REPULSION_DIST) {
+                                // Fuerza lineal simple (más estable que 1/dist)
+                                let force = (1 - dist / REPULSION_DIST) * REPULSION_STR;
+                                fx += (dx / dist) * force;
+                                fy += (dy / dist) * force;
                             }
                         }
-                        // 2. Atracción por enlaces (solo internos al stack)
+
+                        // B. Atracción de Enlaces (edges)
                         const connectedLinks = graph.getConnectedLinks(nodeA);
                         connectedLinks.forEach(link => {
                             const sourceId = link.source().id;
@@ -379,74 +399,95 @@
                             let otherNode = null;
                             if (sourceId === nodeA.id && targetId) otherNode = graph.getCell(targetId);
                             else if (targetId === nodeA.id && sourceId) otherNode = graph.getCell(sourceId);
+                            
                             if (otherNode && children.includes(otherNode)) {
                                 const otherCenter = otherNode.getBBox().center();
                                 let dx = otherCenter.x - aCenter.x;
                                 let dy = otherCenter.y - aCenter.y;
-                                let dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                                if (dist > 80) {
-                                    let attract = 0.012 * (dist - 80);
-                                    fx += dx * attract / dist;
-                                    fy += dy * attract / dist;
+                                let dist = Math.sqrt(dx*dx + dy*dy) || 0.1;
+                                
+                                if (dist > ATTRACTION_DIST) { 
+                                    let force = (dist - ATTRACTION_DIST) * ATTRACTION_STR;
+                                    fx += (dx / dist) * force;
+                                    fy += (dy / dist) * force;
                                 }
                             }
                         });
-                        // 3. Cohesión al centro del stack (más fuerte y con "persecución")
-                        let distToCenter = Math.sqrt(Math.pow(cx - aCenter.x, 2) + Math.pow(cy - aCenter.y, 2));
-                        if (distToCenter > 10) {
-                            const pullStrength = distToCenter > 60 ? 0.045 : 0.018;
-                            fx += (cx - aCenter.x) * pullStrength;
-                            fy += (cy - aCenter.y) * pullStrength;
+
+                        // C. Cohesión al Centro (Seguimiento Stack)
+                        // Para que stacks grandes se muevan rápido, todos los nodos deben querer ir al centro
+                        fx += (cx - aCenter.x) * CENTER_PULL;
+                        fy += (cy - aCenter.y) * CENTER_PULL;
+
+                        // Aplicar Amortiguación
+                        fx *= DAMPING;
+                        fy *= DAMPING;
+
+                        // Limitar Velocidad
+                        const speed = Math.sqrt(fx*fx + fy*fy);
+                        if (speed > MAX_SPEED) {
+                            fx = (fx / speed) * MAX_SPEED;
+                            fy = (fy / speed) * MAX_SPEED;
                         }
-                        // 4. Fricción y umbral anti-vibración (más fuerte)
-                        let nodeCount = children.length;
-                        let friction = nodeCount > 10 ? 0.45 : 0.75; // más fricción
-                        let minMove = nodeCount > 10 ? 3.5 : 2.0; // umbral más alto
-                        fx *= friction;
-                        fy *= friction;
-                        if (Math.abs(fx) > minMove || Math.abs(fy) > minMove) {
+
+                        // Deadzone (elimina microvibración)
+                        if (Math.abs(fx) < STOP_THRESHOLD) fx = 0;
+                        if (Math.abs(fy) < STOP_THRESHOLD) fy = 0;
+
+                        if (fx !== 0 || fy !== 0) {
                             nodeA.translate(fx, fy);
                             stackMoved = true;
                         }
                     }
 
-                    // --- FÍSICA DE COLISIONES (bolsa de canicas) ---
-                    const padding = 10;
+                    // --- 2. COLISIONES FÍSICAS (Hard Constraints) ---
+                    // Esto asegura que no queden pegados visualmente
+                    const pad = COLLISION_PADDING;
                     for (let i = 0; i < children.length; i++) {
                         const childA = children[i];
                         for (let j = i + 1; j < children.length; j++) {
                             const childB = children[j];
                             const bA = childA.getBBox();
                             const bB = childB.getBBox();
-                            if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
-                                bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
+                            
+                            // Check solapamiento con padding extra
+                            if (bA.x < bB.x + bB.width + pad && 
+                                bA.x + bA.width + pad > bB.x &&
+                                bA.y < bB.y + bB.height + pad && 
+                                bA.y + bA.height + pad > bB.y) {
+                                
                                 const cA = bA.center();
                                 const cB = bB.center();
                                 let dx = cA.x - cB.x;
                                 let dy = cA.y - cB.y;
-                                if (dx === 0 && dy === 0) dy = 1;
-                                const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
-                                const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
+                                if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) { dx = 1; dy = 0; }
+
+                                const penX = (bA.width/2 + bB.width/2 + pad) - Math.abs(dx);
+                                const penY = (bA.height/2 + bB.height/2 + pad) - Math.abs(dy);
+
                                 let mx = 0, my = 0;
                                 if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
                                 else my = penY * (dy > 0 ? 1 : -1);
+
                                 const aDrag = childA.id === draggedElementId;
                                 const bDrag = childB.id === draggedElementId;
-                                const f = 1.0;
+                                
+                                // Resolución rígida (separación inmediata)
                                 if (aDrag) {
-                                    childB.translate(-mx * f, -my * f);
+                                    childB.translate(-mx, -my);
                                 } else if (bDrag) {
-                                    childA.translate(mx * f, my * f);
+                                    childA.translate(mx, my);
                                 } else {
-                                    childA.translate(mx * 0.5 * f, my * 0.5 * f);
-                                    childB.translate(-mx * 0.5 * f, -my * 0.5 * f);
+                                    childA.translate(mx * 0.5, my * 0.5);
+                                    childB.translate(-mx * 0.5, -my * 0.5);
                                 }
                                 stackMoved = true;
                             }
                         }
                     }
+
                     if (stackMoved) {
-                        stack.fitEmbeds({ padding: 25 });
+                        stack.fitEmbeds({ padding: 30 });
                         anyMoved = true;
                     }
                 });
