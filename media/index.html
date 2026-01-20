@@ -575,6 +575,46 @@
                 const cy = y + headerH + (resAreaH / 2) - resHeight / 2;
                 const spiralStep = 18;
                 const spiralAngleStep = Math.PI / 5;
+                // Colores por tipo de recurso AWS
+                function getResourceColor(type) {
+                    if (!type) return '#333';
+                    // Tipos cortos de CDK/CloudFormation agrupados
+                    const compute = [
+                        'Function','Instance','AutoScalingGroup','LaunchConfiguration','ECSCluster','TaskDefinition','Service','StateMachine','BatchJobDefinition','BatchJobQueue'
+                    ];
+                    const storage = [
+                        'Bucket','FileSystem','Volume','BackupVault','StorageLens'
+                    ];
+                    const database = [
+                        'Table','DBInstance','DBCluster','DBSubnetGroup','GlobalTable','ReplicationGroup','CacheCluster'
+                    ];
+                    const networking = [
+                        'VPC','Subnet','RouteTable','InternetGateway','NatGateway','SecurityGroup','NetworkAcl','VPCEndpoint','LoadBalancer','Listener'
+                    ];
+                    const security = [
+                        'Role','User','Group','Policy','ManagedPolicy','AccessKey','Secret','Key'
+                    ];
+                    const management = [
+                        'Stack','Parameter','Alarm','Dashboard','LogGroup','LogStream','EventRule','Trail','ConfigRule'
+                    ];
+                    const appIntegration = [
+                        'Queue','Topic','Subscription','EventBus','Api','Connection','Integration'
+                    ];
+                    const analytics = [
+                        'Stream','DeliveryStream','Dataset','Crawler','Job','Table','WorkGroup'
+                    ];
+                    // Normalizar tipo
+                    const t = type.replace(/^AWS::[\w]+::/, '');
+                    if (compute.includes(t)) return '#FF9900';
+                    if (storage.includes(t)) return '#3F8624';
+                    if (database.includes(t)) return '#3355DA';
+                    if (networking.includes(t)) return '#8A2BE2';
+                    if (security.includes(t)) return '#D13212';
+                    if (management.includes(t)) return '#E03088';
+                    if (appIntegration.includes(t)) return '#D9A741';
+                    if (analytics.includes(t)) return '#8A2BE2';
+                    return '#666';
+                }
                 childResources.forEach((res, idx) => {
                     const resNode = new joint.shapes.standard.Rectangle();
                     const angle = idx * spiralAngleStep;
@@ -583,9 +623,10 @@
                     const ry = cy + Math.sin(angle) * radius;
                     resNode.position(rx, ry);
                     resNode.resize(resWidth, resHeight);
+                    const resourceColor = getResourceColor(res.data.type);
                     resNode.attr({
-                        body: { fill: '#333', stroke: headerColor, strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
-                        label: { text: res.data.label, fill: '#ddd', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
+                        body: { fill: resourceColor, stroke: '#222', strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
+                        label: { text: res.data.label, fill: '#fff', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
                     });
                     resNode.set('data', res.data);
                     stack.embed(resNode);
