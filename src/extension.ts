@@ -62,6 +62,15 @@ export function activate(context: vscode.ExtensionContext) {
             // CARGAMOS EL HTML DESDE EL ARCHIVO
             const htmlContent = getHtmlForWebview(context, finalGraph, stacksFound);
 			panel.webview.html = htmlContent;
+            
+				// Listener para cambios de configuración en tiempo real
+				const configListener = vscode.workspace.onDidChangeConfiguration(e => {
+					if (e.affectsConfiguration('cdk-stackmap.showMinimap')) {
+						const newValue = vscode.workspace.getConfiguration('cdk-stackmap').get('showMinimap', true);
+						panel.webview.postMessage({ type: 'updateConfig', config: { showMinimap: newValue } });
+					}
+				});
+				context.subscriptions.push(configListener);
 
 		} catch (error) {
 			vscode.window.showErrorMessage('Error procesando el CDK Stack.');
@@ -73,17 +82,23 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function getHtmlForWebview(context: vscode.ExtensionContext, graphData: GraphData, count: number): string {
-    // 1. Obtenemos la ruta del archivo HTML en disco
-    const htmlPath = path.join(context.extensionPath, 'media', 'index.html');
-    
-    // 2. Leemos el contenido como texto
-    let html = fs.readFileSync(htmlPath, 'utf-8');
+	// 1. Obtenemos la ruta del archivo HTML en disco
+	const htmlPath = path.join(context.extensionPath, 'media', 'index.html');
+	// 2. Leemos el contenido como texto
+	let html = fs.readFileSync(htmlPath, 'utf-8');
 
-    // 3. Reemplazamos las marcas {{...}} por los datos reales
-    html = html.replace('{{stackCount}}', count.toString());
-    html = html.replace('{{graphData}}', JSON.stringify(graphData));
+	// 3. Reemplazamos las marcas {{...}} por los datos reales
+	html = html.replace('{{stackCount}}', count.toString());
+	html = html.replace('{{graphData}}', JSON.stringify(graphData));
 
-    return html;
+	// 4. Leer configuración y pasarla como JSON embebido, asegurando que esté disponible antes de cualquier script
+	const config = vscode.workspace.getConfiguration('cdk-stackmap');
+	const configObj = {
+		showMinimap: config.get('showMinimap', true)
+	};
+	// Inyectar el objeto global justo después de <body>
+	html = html.replace('<body>', `<body>\n<script>window.__USER_CONFIG__ = ${JSON.stringify(configObj)};<\/script>`);
+	return html;
 }
 
 export function deactivate() {}

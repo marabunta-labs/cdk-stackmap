@@ -17,7 +17,18 @@
         "command": "cdk-stackmap.visualize",
         "title": "CDK StackMap: Visualize Stack"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "CDK StackMap",
+      "properties": {
+        "cdk-stackmap.showMinimap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostrar el minimapa en la visualización de stacks."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

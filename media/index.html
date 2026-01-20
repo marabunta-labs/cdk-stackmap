@@ -85,6 +85,19 @@
     </div>
 
     <script>
+                            // Escuchar mensajes de la extensión para cambios de configuración en tiempo real
+                            window.addEventListener('message', (event) => {
+                                const message = event.data;
+                                if (message && message.type === 'updateConfig' && message.config) {
+                                    if (message.config.showMinimap === false) {
+                                        $('#minimap').css('display', 'none');
+                                    } else {
+                                        $('#minimap').css('display', 'block');
+                                    }
+                                    // Actualizar el objeto global para mantener consistencia
+                                    window.__USER_CONFIG__ = Object.assign({}, window.__USER_CONFIG__, message.config);
+                                }
+                            });
                     // --- ÁREA LIMITADA DEL GRAFO ---
                     const GRAPH_AREA = { minX: 0, minY: 0, maxX: 10000, maxY: 6000 };
                     function clampPosition(x, y, width, height) {
@@ -93,6 +106,12 @@
                         return { x: clampedX, y: clampedY };
                     }
         $(document).ready(function() {
+                        // Ocultar minimapa según config al cargar
+                        if (window.__USER_CONFIG__ && window.__USER_CONFIG__.showMinimap === false) {
+                            $('#minimap').css('display', 'none');
+                        } else {
+                            $('#minimap').css('display', 'block');
+                        }
             // --- INTERACTIVIDAD DEL MINIMAPA: asegurar eventos y robustez ---
             $('#minimap').on('mousemove', function(e) {
                 e.stopPropagation();
@@ -1095,5 +1114,6 @@
 
         });
     </script>
-</body>
-</html>
+           // --- CONFIGURACIÓN ---
+           // Estado de configuración inicial desde la extensión
+           // window.__USER_CONFIG__ y window.__GRAPH_DATA__ deben ser inyectados como JSON válidos por la extensión
