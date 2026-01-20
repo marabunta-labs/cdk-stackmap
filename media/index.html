@@ -103,34 +103,42 @@
                 sorting: joint.dia.Paper.sorting.APPROX
             });
 
-            // --- 2. DATOS ---
-            const STACK_DATA = [
-                { id: 'Frontend', color: '#252526', header: '#3F8624', resources: ['CloudFront', 'S3 Web', 'Route53'] },
-                { id: 'Backend', color: '#252526', header: '#FF9900', resources: ['API Gateway', 'Auth Lambda', 'Core Lambda'] },
-                { id: 'Database', color: '#252526', header: '#3355DA', resources: ['DynamoDB', 'Stream', 'Cache'] },
-                { id: 'Data', color: '#252526', header: '#D13212', resources: ['Kinesis', 'Firehose', 'S3 Lake'] },
-                { id: 'Ops', color: '#252526', header: '#8A2BE2', resources: ['CloudWatch', 'Alarms'] }
+
+
+            // --- 2. DATOS (RAW_DATA) ---
+            // graphData viene como { nodes: [...], edges: [...] }
+            const GRAPH_DATA = {{graphData}};
+            // Unificamos nodos y aristas en un solo array RAW_DATA
+            const RAW_DATA = [
+                ...GRAPH_DATA.nodes,
+                ...GRAPH_DATA.edges
             ];
 
-            const stackElements = []; 
+            const stackElements = [];
 
-            // --- 3. UI LOGIC ---
+
+            // --- 3. UI LOGIC (RAW_DATA) ---
+            // Extraer stacks y colores para la UI
+            const STACK_COLORS = ['#3F8624', '#FF9900', '#3355DA', '#D13212', '#8A2BE2'];
+            const stacks = RAW_DATA.filter(e => e.data.type === 'Stack');
+            const resources = RAW_DATA.filter(e => e.data.type !== 'Stack' && !e.data.source && !e.data.target);
+            const edges = RAW_DATA.filter(e => e.data.source && e.data.target);
+
             function updateCounter() {
-                const total = STACK_DATA.length;
+                const total = stacks.length;
                 const visible = $('.stack-checkbox:checked').length;
                 $('#counter-text').text(`${visible}/${total}`);
             }
 
             const listEl = $('#stack-list');
-            STACK_DATA.forEach(data => {
+            stacks.forEach((data, idx) => {
                 const row = $(`
                     <div class="stack-row">
-                        <input type="checkbox" class="stack-checkbox" data-id="${data.id}" checked>
-                        <div class="color-dot" style="background:${data.header}"></div>
-                        <span>${data.id}</span>
+                        <input type="checkbox" class="stack-checkbox" data-id="${data.data.id}" checked>
+                        <div class="color-dot" style="background:${STACK_COLORS[idx % STACK_COLORS.length]}"></div>
+                        <span>${data.data.label}</span>
                     </div>
                 `);
-                
                 row.on('click', function(e) {
                     if (e.target.type !== 'checkbox') {
                         const cb = $(this).find('input');
@@ -147,121 +155,190 @@
                 const stackId = $(this).data('id');
                 const isVisible = $(this).is(':checked');
                 const stack = stackElements.find(el => el.get('stackName') === stackId);
-                
                 if (stack) {
                     const display = isVisible ? 'block' : 'none';
-                    
-                    // 1. Actualizar Stack y Hijos
                     stack.set('hidden', !isVisible);
                     stack.attr('./display', display);
-                    
+                    // Ocultar/mostrar recursos embebidos
                     stack.getEmbeddedCells().forEach(child => {
                         child.set('hidden', !isVisible);
                         child.attr('./display', display);
                     });
-
-                    // 2. Actualizar Enlaces con Lógica de Doble Verificación
-                    // Solo mostramos el enlace si AMBOS extremos son visibles
-                    const links = graph.getConnectedLinks(stack, { deep: true });
-                    
-                    links.forEach(link => {
-                        if (!isVisible) {
-                            // Si ocultamos el stack, la flecha desaparece siempre
-                            link.attr('./display', 'none');
-                        } else {
-                            // Si estamos mostrando el stack, verificamos el vecino
-                            const source = graph.getCell(link.source().id);
-                            const target = graph.getCell(link.target().id);
-                            
-                            // ¿Están visibles origen y destino?
-                            // (!get('hidden') asume que undefined es visible, lo cual es correcto al inicio)
-                            const sourceVisible = source && !source.get('hidden');
-                            const targetVisible = target && !target.get('hidden');
-
-                            if (sourceVisible && targetVisible) {
-                                link.attr('./display', 'block');
-                            } else {
-                                // Si el vecino sigue oculto, mantenemos la flecha oculta
+                    // Ocultar/mostrar todos los enlaces conectados a stack y a sus recursos
+                    const allCells = [stack, ...stack.getEmbeddedCells()];
+                    allCells.forEach(cell => {
+                        const links = graph.getConnectedLinks(cell);
+                        links.forEach(link => {
+                            if (!isVisible) {
                                 link.attr('./display', 'none');
+                            } else {
+                                const source = graph.getCell(link.source().id);
+                                const target = graph.getCell(link.target().id);
+                                const sourceVisible = source && !source.get('hidden');
+                                const targetVisible = target && !target.get('hidden');
+                                if (sourceVisible && targetVisible) {
+                                    link.attr('./display', 'block');
+                                } else {
+                                    link.attr('./display', 'none');
+                                }
                             }
-                        }
+                        });
                     });
                 }
                 updateCounter();
             });
 
-            // --- 4. CONSTRUCCIÓN ---
+
+            // --- 4. CONSTRUCCIÓN (RAW_DATA) ---
             const startX = 200;
             let startY = 200;
 
-            STACK_DATA.forEach((data, i) => {
-                const x = startX + (i % 3) * 350;
-                const y = startY + Math.floor(i / 3) * 400;
+            // Crear stacks distribuidos en cuadrícula para evitar fila vertical
+            const stacksPerRow = Math.ceil(Math.sqrt(stacks.length));
+            const STACK_X_SPACING = 480; // Mayor separación horizontal
+            const STACK_Y_SPACING = 420; // Mayor separación vertical
+            stacks.forEach((stackData, i) => {
+                const col = i % stacksPerRow;
+                const row = Math.floor(i / stacksPerRow);
+                const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30; // más jitter
+                const y = startY + row * STACK_Y_SPACING + Math.random() * 60 - 30;
                 const headerH = 35;
                 const width = 240;
                 const height = 200;
+                const color = '#252526';
+                const headerColor = STACK_COLORS[i % STACK_COLORS.length];
 
                 const stack = new joint.shapes.standard.HeaderedRectangle();
                 stack.position(x, y);
                 stack.resize(width, height);
                 stack.attr({
-                    root: { title: data.id },
-                    header: { fill: data.header, stroke: '#444', height: headerH },
-                    headerText: { text: data.id, fill: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: 'Segoe UI' },
-                    body: { fill: data.color, stroke: '#555', rx: 8, ry: 8 }
+                    root: { title: stackData.data.id },
+                    header: { fill: headerColor, stroke: '#444', height: headerH },
+                    headerText: { text: stackData.data.label, fill: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: 'Segoe UI' },
+                    body: { fill: color, stroke: '#555', rx: 8, ry: 8 }
                 });
                 stack.set('type', 'stack');
-                stack.set('stackName', data.id);
+                stack.set('stackName', stackData.data.id);
                 stack.addTo(graph);
                 stackElements.push(stack);
 
-                data.resources.forEach((resName, idx) => {
-                    const res = new joint.shapes.standard.Rectangle();
-                    res.position(x + 20 + Math.random()*50, y + 60 + Math.random()*50);
-                    res.resize(120, 35);
-                    res.attr({
-                        body: { fill: '#333', stroke: data.header, strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
-                        label: { text: resName, fill: '#ddd', fontSize: 11, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 110, ellipsis: true } }
+                // Recursos hijos de este stack
+                const childResources = resources.filter(r => r.data.parent === stackData.data.id);
+                // Distribuir recursos de forma aleatoria dentro del stack
+                // Colocación en espiral para evitar apilamiento incluso con muchos nodos
+                const resAreaW = width - 20;
+                const resAreaH = height - 40;
+                const resWidth = 90;
+                const resHeight = 28;
+                const cx = x + width / 2 - resWidth / 2;
+                const cy = y + headerH + (resAreaH / 2) - resHeight / 2;
+                const spiralStep = 18; // distancia entre vueltas
+                const spiralAngleStep = Math.PI / 5; // ángulo entre nodos
+                childResources.forEach((res, idx) => {
+                    const resNode = new joint.shapes.standard.Rectangle();
+                    // Espiral: r crece con idx, ángulo también
+                    const angle = idx * spiralAngleStep;
+                    const radius = spiralStep * (1 + idx / (2 * Math.PI));
+                    const rx = cx + Math.cos(angle) * radius;
+                    const ry = cy + Math.sin(angle) * radius;
+                    resNode.position(rx, ry);
+                    resNode.resize(resWidth, resHeight);
+                    resNode.attr({
+                        body: { fill: '#333', stroke: headerColor, strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
+                        label: { text: res.data.label, fill: '#ddd', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
                     });
-                    stack.embed(res);
-                    res.addTo(graph);
+                    stack.embed(resNode);
+                    resNode.addTo(graph);
+                    res._cell = resNode; // Guardar referencia para enlaces
                 });
                 stack.fitEmbeds({ padding: 25 });
+                stack._cell = stack; // Para enlaces
             });
 
-            function linkNodes(labelA, labelB) {
-                const cells = graph.getCells();
-                const nodeA = cells.find(c => c.attr('label/text') === labelA);
-                const nodeB = cells.find(c => c.attr('label/text') === labelB);
-                if (nodeA && nodeB) {
+            // Crear enlaces
+            edges.forEach(edge => {
+                // Buscar nodos fuente y destino
+                let sourceNode = null;
+                let targetNode = null;
+                // Buscar en recursos
+                sourceNode = resources.find(r => r.data.id === edge.data.source)?._cell;
+                targetNode = resources.find(r => r.data.id === edge.data.target)?._cell;
+                // Si no está en recursos, buscar en stacks
+                if (!sourceNode) sourceNode = stacks.find(s => s.data.id === edge.data.source)?._cell;
+                if (!targetNode) targetNode = stacks.find(s => s.data.id === edge.data.target)?._cell;
+                if (sourceNode && targetNode) {
                     const link = new joint.shapes.standard.Link();
-                    link.source(nodeA);
-                    link.target(nodeB);
+                    link.source(sourceNode);
+                    link.target(targetNode);
                     link.attr({
                         line: { stroke: '#666', strokeWidth: 1.5, targetMarker: { type: 'path', d: 'M 8 -4 0 0 8 4 z' } }
                     });
                     link.connector('rounded');
                     link.addTo(graph);
                 }
-            }
-            linkNodes('CloudFront', 'API Gateway');
-            linkNodes('Core Lambda', 'DynamoDB');
-            linkNodes('Stream', 'Kinesis');
+            });
 
             // --- 5. FÍSICA SIN VIBRACIÓN ---
             
-            let draggedElementId = null;
-            paper.on('element:pointerdown', (ev) => draggedElementId = ev.model.id);
-            paper.on('element:pointerup', () => draggedElementId = null);
 
+            let draggedElementId = null;
+            let draggingSingleNodeStack = null;
+            let dragStartPointer = null;
+            let dragStartStackPos = null;
+
+            paper.on('element:pointerdown', (ev, x, y) => {
+                const model = ev.model;
+                // ¿Es un recurso embebido en un stack de un solo nodo?
+                const parentStack = stackElements.find(stack => stack.getEmbeddedCells().length === 1 && stack.getEmbeddedCells()[0].id === model.id);
+                if (parentStack && model !== parentStack) {
+                    // Iniciar drag especial: mover stack completo
+                    draggingSingleNodeStack = parentStack;
+                    dragStartPointer = { x, y };
+                    const pos = parentStack.position();
+                    dragStartStackPos = { x: pos.x, y: pos.y };
+                    draggedElementId = null; // No drag normal
+                } else {
+                    draggedElementId = model.id;
+                    draggingSingleNodeStack = null;
+                }
+            });
+
+            paper.on('element:pointermove', (ev, x, y) => {
+                if (draggingSingleNodeStack && dragStartPointer && dragStartStackPos) {
+                    // Mover stack completo
+                    const dx = x - dragStartPointer.x;
+                    const dy = y - dragStartPointer.y;
+                    draggingSingleNodeStack.position(dragStartStackPos.x + dx, dragStartStackPos.y + dy);
+                    draggingSingleNodeStack.fitEmbeds({ padding: 25 });
+                }
+            });
+
+            paper.on('element:pointerup', () => {
+                draggedElementId = null;
+                draggingSingleNodeStack = null;
+                dragStartPointer = null;
+                dragStartStackPos = null;
+            });
+
+
+            // --- Sistema de enfriamiento simple: solo detener si no hay movimiento ---
+            let stableFrames = 0;
+            const MAX_STABLE = 60; // frames estables antes de parar (más paciencia)
             function physicsLoop() {
-                // Solo un paso por frame para evitar sobre-corrección
-                resolveInternalPhysics();
+                let moved = resolveInternalPhysics();
                 resolveStackCollisions();
-                requestAnimationFrame(physicsLoop);
+                if (moved) {
+                    stableFrames = 0;
+                } else {
+                    stableFrames++;
+                }
+                if (stableFrames < MAX_STABLE) {
+                    requestAnimationFrame(physicsLoop);
+                }
             }
 
             function resolveInternalPhysics() {
+                let anyMoved = false;
                 stackElements.forEach(stack => {
                     if (stack.get('hidden')) return;
 
@@ -275,85 +352,87 @@
 
                     let stackMoved = false;
 
-                    // PASO 1: FUERZAS AMBIENTALES (Cohesión y Enlaces)
-                    children.forEach(child => {
-                        if (child.id === draggedElementId) { stackMoved = true; return; }
-
-                        const center = child.getBBox().center();
-                        let dx = 0, dy = 0;
-
-                        // Cohesión (Volver al centro suavemente)
-                        const distToCenter = Math.sqrt(Math.pow(cx - center.x, 2) + Math.pow(cy - center.y, 2));
-                        if (distToCenter > 10) { 
-                            const pullStrength = 0.02; 
-                            dx += (cx - center.x) * pullStrength;
-                            dy += (cy - center.y) * pullStrength;
+                    // --- LAYOUT FORZADO (force-directed) ---
+                    for (let i = 0; i < children.length; i++) {
+                        const nodeA = children[i];
+                        if (nodeA.id === draggedElementId) continue;
+                        let fx = 0, fy = 0;
+                        const aCenter = nodeA.getBBox().center();
+                        for (let j = 0; j < children.length; j++) {
+                            if (i === j) continue;
+                            const nodeB = children[j];
+                            const bCenter = nodeB.getBBox().center();
+                            let dx = aCenter.x - bCenter.x;
+                            let dy = aCenter.y - bCenter.y;
+                            let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                            if (dist < 110) {
+                                let repulse = 13.5 / dist;
+                                fx += dx * repulse;
+                                fy += dy * repulse;
+                            }
                         }
-
-                        // Enlaces (Tensión mínima)
-                        const connectedLinks = graph.getConnectedLinks(child);
+                        // 2. Atracción por enlaces (solo internos al stack)
+                        const connectedLinks = graph.getConnectedLinks(nodeA);
                         connectedLinks.forEach(link => {
                             const sourceId = link.source().id;
                             const targetId = link.target().id;
                             let otherNode = null;
-                            if (sourceId === child.id && targetId) otherNode = graph.getCell(targetId);
-                            else if (targetId === child.id && sourceId) otherNode = graph.getCell(sourceId);
-
-                            if (otherNode) {
-                                const otherParent = otherNode.getParentCell();
-                                if (otherParent && otherParent.id !== stack.id) {
-                                    const otherCenter = otherNode.getBBox().center();
-                                    // REDUCIDO: Fuerza casi nula para que no arrastre el stack
-                                    dx += (otherCenter.x - center.x) * 0.0001;
-                                    dy += (otherCenter.y - center.y) * 0.0001;
+                            if (sourceId === nodeA.id && targetId) otherNode = graph.getCell(targetId);
+                            else if (targetId === nodeA.id && sourceId) otherNode = graph.getCell(sourceId);
+                            if (otherNode && children.includes(otherNode)) {
+                                const otherCenter = otherNode.getBBox().center();
+                                let dx = otherCenter.x - aCenter.x;
+                                let dy = otherCenter.y - aCenter.y;
+                                let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                                if (dist > 80) {
+                                    let attract = 0.012 * (dist - 80);
+                                    fx += dx * attract / dist;
+                                    fy += dy * attract / dist;
                                 }
                             }
                         });
-
-                        // 4. FRICCIÓN Y UMBRAL
-                        dx *= 0.8;
-
-                        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-                            child.translate(dx, dy);
+                        // 3. Cohesión al centro del stack (más fuerte y con "persecución")
+                        let distToCenter = Math.sqrt(Math.pow(cx - aCenter.x, 2) + Math.pow(cy - aCenter.y, 2));
+                        if (distToCenter > 10) {
+                            const pullStrength = distToCenter > 60 ? 0.045 : 0.018;
+                            fx += (cx - aCenter.x) * pullStrength;
+                            fy += (cy - aCenter.y) * pullStrength;
+                        }
+                        // 4. Fricción y umbral anti-vibración (más fuerte)
+                        let nodeCount = children.length;
+                        let friction = nodeCount > 10 ? 0.45 : 0.75; // más fricción
+                        let minMove = nodeCount > 10 ? 3.5 : 2.0; // umbral más alto
+                        fx *= friction;
+                        fy *= friction;
+                        if (Math.abs(fx) > minMove || Math.abs(fy) > minMove) {
+                            nodeA.translate(fx, fy);
                             stackMoved = true;
                         }
-                    });
+                    }
 
-                    // PASO 2: COLISIONES RÍGIDAS INTERNAS (Evitar solapamiento vertical/horizontal)
-                    const padding = 10; // Espacio mínimo entre nodos
-
+                    // --- FÍSICA DE COLISIONES (bolsa de canicas) ---
+                    const padding = 10;
                     for (let i = 0; i < children.length; i++) {
                         const childA = children[i];
                         for (let j = i + 1; j < children.length; j++) {
                             const childB = children[j];
-
                             const bA = childA.getBBox();
                             const bB = childB.getBBox();
-
-                            // Chequeo AABB con padding
                             if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
                                 bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
-                                
                                 const cA = bA.center();
                                 const cB = bB.center();
                                 let dx = cA.x - cB.x;
                                 let dy = cA.y - cB.y;
-                                if (dx === 0 && dy === 0) dy = 1; // Desempate vertical por defecto
-
+                                if (dx === 0 && dy === 0) dy = 1;
                                 const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
                                 const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
-
                                 let mx = 0, my = 0;
-                                // Resolver en el eje de menor penetración
                                 if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
                                 else my = penY * (dy > 0 ? 1 : -1);
-
-                                // Gestión de arrastre: El nodo arrastrado es inamovible
                                 const aDrag = childA.id === draggedElementId;
                                 const bDrag = childB.id === draggedElementId;
-
-                                const f = 1.0; // Respuesta rígida inmediata (sin rebote suave)
-
+                                const f = 1.0;
                                 if (aDrag) {
                                     childB.translate(-mx * f, -my * f);
                                 } else if (bDrag) {
@@ -366,11 +445,12 @@
                             }
                         }
                     }
-
                     if (stackMoved) {
                         stack.fitEmbeds({ padding: 25 });
+                        anyMoved = true;
                     }
                 });
+                return anyMoved;
             }
 
             function resolveStackCollisions() {
@@ -426,10 +506,20 @@
 
             requestAnimationFrame(physicsLoop);
 
+
             // --- 6. CÁMARA ---
             const zoomSpeed = 0.1;
-            paper.on('blank:mousewheel element:mousewheel', (e, x, y, delta) => {
+            // Permitir zoom en cualquier parte del paper (fondo, stack o nodo)
+            paper.el.addEventListener('wheel', function(e) {
+                // Solo si Ctrl no está presionado (para no interferir con zoom del navegador)
+                if (e.ctrlKey) return;
                 e.preventDefault();
+                // Obtener posición relativa al paper
+                const rect = paper.el.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                // Delta: dirección del scroll
+                const delta = e.deltaY < 0 ? 1 : -1;
                 const oldScale = paper.scale().sx;
                 const newScale = oldScale + (delta * zoomSpeed);
                 if (newScale < 0.2 || newScale > 4) return;
@@ -439,7 +529,7 @@
                 const tr = paper.translate();
                 paper.translate(tr.tx - ax * newScale, tr.ty - ay * newScale);
                 paper.scale(newScale, newScale);
-            });
+            }, { passive: false });
 
             let panning = false, panStart = {x:0, y:0};
             paper.on('blank:pointerdown', (e) => { panning=true; panStart={x:e.clientX, y:e.clientY}; $('#paper').addClass('panning'); });
