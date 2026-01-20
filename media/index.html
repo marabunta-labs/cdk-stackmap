@@ -344,7 +344,8 @@
 
             // --- 3. UI LOGIC (RAW_DATA) ---
             // Extraer stacks y colores para la UI
-            const STACK_COLORS = ['#3F8624', '#FF9900', '#3355DA', '#D13212', '#8A2BE2'];
+            // Colores editables por stack
+            let STACK_COLORS = ['#3F8624', '#FF9900', '#3355DA', '#D13212', '#8A2BE2'];
             const stacks = RAW_DATA.filter(e => e.data.type === 'Stack');
             const resources = RAW_DATA.filter(e => e.data.type !== 'Stack' && !e.data.source && !e.data.target);
             const edges = RAW_DATA.filter(e => e.data.source && e.data.target);
@@ -357,20 +358,38 @@
 
             const listEl = $('#stack-list');
             stacks.forEach((data, idx) => {
-                const row = $(`
-                    <div class="stack-row">
-                        <input type="checkbox" class="stack-checkbox" data-id="${data.data.id}" checked>
-                        <div class="color-dot" style="background:${STACK_COLORS[idx % STACK_COLORS.length]}"></div>
-                        <span>${data.data.label}</span>
+                const color = STACK_COLORS[idx % STACK_COLORS.length];
+                const row = $(
+                    `<div class="stack-row" style="justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" class="stack-checkbox" data-id="${data.data.id}" checked>
+                            <span>${data.data.label}</span>
+                        </div>
+                        <input type="color" class="stack-color-picker" data-idx="${idx}" value="${color}" style="width:22px;height:22px;border:none;background:none;cursor:pointer;">
                     </div>
                 `);
                 row.on('click', function(e) {
-                    if (e.target.type !== 'checkbox') {
-                        const cb = $(this).find('input');
+                    if (e.target.type !== 'checkbox' && e.target.type !== 'color') {
+                        const cb = $(this).find('input[type="checkbox"]');
                         cb.prop('checked', !cb.prop('checked')).trigger('change');
                     }
                 });
                 listEl.append(row);
+            });
+
+            // Evento para cambiar color de stack
+            $('.stack-color-picker').on('input', function(e) {
+                const idx = parseInt($(this).data('idx'));
+                const newColor = $(this).val();
+                STACK_COLORS[idx] = newColor;
+                // Actualizar color en el header del stack
+                const stack = stackElements[idx];
+                if (stack) {
+                    stack.attr('header/fill', newColor);
+                }
+                // (Ya no hay color-dot que actualizar)
+                // Forzar refresco de minimapa
+                window._minimapPreview = window._minimapPreview || null;
             });
             updateCounter();
 
