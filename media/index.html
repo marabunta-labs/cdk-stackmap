@@ -83,6 +83,7 @@
 
     <script>
         $(document).ready(function() {
+            // ...existing code...
 
             // --- 1. CONFIGURACIÓN ---
             const namespace = joint.shapes;
@@ -190,6 +191,95 @@
 
 
             // --- 4. CONSTRUCCIÓN (RAW_DATA) ---
+                        // --- TOOLTIP ---
+                        // Crear tooltip flotante
+                        const tooltip = $('<div id="graph-tooltip"></div>').css({
+                            position: 'fixed',
+                            pointerEvents: 'none',
+                            zIndex: 9999,
+                            background: 'rgba(30,30,30,0.97)',
+                            color: '#fff',
+                            border: '1px solid #4fc3f7',
+                            borderRadius: '6px',
+                            padding: '8px 14px',
+                            fontSize: '13px',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                            display: 'none',
+                            maxWidth: '320px',
+                            whiteSpace: 'pre-line'
+                        });
+                        $('body').append(tooltip);
+
+                        function showTooltip(html, x, y) {
+                            tooltip.html(html).css({ left: x + 16, top: y + 16, display: 'block' });
+                        }
+                        function hideTooltip() {
+                            tooltip.hide();
+                        }
+
+                        // --- EVENTOS DE TOOLTIP PARA NODOS ---
+                        paper.on('element:mouseenter', function(cellView, evt) {
+                            const model = cellView.model;
+                            // No mostrar tooltip para stacks
+                            if (model.get('type') === 'stack') return;
+                            let info = '';
+                            // Tipo AWS real
+                            if (model.attributes.data && model.attributes.data.type) {
+                                info += `<b>Tipo:</b> ${model.attributes.data.type}`;
+                            }
+                            // ID lógico
+                            if (model.attributes.data && model.attributes.data.id) {
+                                info += `\n<b>ID:</b> ${model.attributes.data.id}`;
+                            }
+                            // Stack (nombre)
+                            if (model.attributes.data && model.attributes.data.parent) {
+                                info += `\n<b>Stack:</b> ${model.attributes.data.parent}`;
+                            }
+                            showTooltip(info, evt.clientX, evt.clientY);
+                        });
+                        paper.on('element:mousemove', function(cellView, evt) {
+                            showTooltip(tooltip.html(), evt.clientX, evt.clientY);
+                        });
+                        paper.on('element:mouseleave', function() {
+                            hideTooltip();
+                        });
+
+                        // --- EVENTOS DE TOOLTIP PARA ENLACES ---
+                        paper.on('link:mouseenter', function(linkView, evt) {
+                            const model = linkView.model;
+                            let info = `<b>Conexión</b>`;
+                            // Buscar los nodos fuente y destino en el grafo
+                            const sourceId = model.source() && model.source().id;
+                            const targetId = model.target() && model.target().id;
+                            let sourceLabel = sourceId;
+                            let targetLabel = targetId;
+                            if (sourceId) {
+                                const sourceCell = model.graph.getCell(sourceId);
+                                if (sourceCell && sourceCell.attributes.data && sourceCell.attributes.data.label) {
+                                    sourceLabel = sourceCell.attributes.data.label;
+                                }
+                            }
+                            if (targetId) {
+                                const targetCell = model.graph.getCell(targetId);
+                                if (targetCell && targetCell.attributes.data && targetCell.attributes.data.label) {
+                                    targetLabel = targetCell.attributes.data.label;
+                                }
+                            }
+                            info += `\n<b>Origen:</b> ${sourceLabel}`;
+                            info += `\n<b>Destino:</b> ${targetLabel}`;
+                            if (model.attributes.data) {
+                                Object.entries(model.attributes.data).forEach(([k, v]) => {
+                                    info += `\n<b>${k}:</b> ${v}`;
+                                });
+                            }
+                            showTooltip(info, evt.clientX, evt.clientY);
+                        });
+                        paper.on('link:mousemove', function(linkView, evt) {
+                            showTooltip(tooltip.html(), evt.clientX, evt.clientY);
+                        });
+                        paper.on('link:mouseleave', function() {
+                            hideTooltip();
+                        });
             const startX = 200;
             let startY = 200;
 
@@ -247,6 +337,8 @@
                         body: { fill: '#333', stroke: headerColor, strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
                         label: { text: res.data.label, fill: '#ddd', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
                     });
+                    // Asignar los datos AWS al nodo visual para tooltips
+                    resNode.set('data', res.data);
                     stack.embed(resNode);
                     resNode.addTo(graph);
                     res._cell = resNode; // Guardar referencia para enlaces
