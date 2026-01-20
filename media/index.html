@@ -1,257 +1,458 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com;">
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
-    <script src="https://unpkg.com/webcola/WebCola/cola.min.js"></script>
-    <script src="https://unpkg.com/cytoscape-cola/cytoscape-cola.js"></script>
+    <!-- CSP Permisiva -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com;">
 
-    <title>CDK StackMap - WebCola Style</title>
+    <!-- Dependencias -->
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.7.7/joint.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.6.0/backbone-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.7.7/joint.min.js"></script>
+
+    <title>Stack Manager - Estabilidad Total</title>
     <style>
-        body, html { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #1e1e1e; font-family: 'Segoe UI', sans-serif; }
-        #cy { width: 100%; height: 100%; display: block; background: radial-gradient(circle at bottom center, #2a2a2d 0%, #1e1e1e 80%); }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1e1e1e; font-family: 'Segoe UI', sans-serif; }
         
-        #info { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(37, 37, 38, 0.95); backdrop-filter: blur(4px); color: #cccccc; padding: 0; border-radius: 6px; font-size: 12px; border: 1px solid #454545; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 220px; display: flex; flex-direction: column; transition: max-height 0.3s ease; }
-        .panel-header { padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid transparent; }
-        .panel-header:hover { background: rgba(255, 255, 255, 0.1); }
-        .arrow { transition: transform 0.2s; font-size: 10px; margin-right: 8px; display: inline-block; }
-        .panel-header.expanded .arrow { transform: rotate(90deg); }
-        .panel-header.expanded { border-bottom: 1px solid #454545; }
-        .badge { background:#007acc; padding: 2px 8px; border-radius:10px; font-size:11px; color:white; font-weight: normal; }
-        #stack-list-container { display: none; overflow: hidden; }
-        #stack-list-container.show { display: block; }
-        #stack-list { padding: 10px; max-height: 60vh; overflow-y: auto; }
-        .stack-item { display: flex; align-items: center; margin-bottom: 6px; cursor: pointer; padding: 4px; border-radius: 4px; transition: background 0.2s; }
-        .stack-item:hover { background-color: #2a2d2e; }
-        .stack-item input { margin-right: 8px; cursor: pointer; }
-        .stack-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+        #paper { width: 100%; height: 100%; cursor: grab; background-color: #1e1e1e; }
+        #paper.panning { cursor: grabbing; }
+
+        /* UI Panel */
+        #ui {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(30, 30, 30, 0.95); 
+            border: 1px solid #454545; color: #cccccc;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            width: 260px; 
+            border-radius: 8px;
+            display: flex; flex-direction: column;
+            font-size: 13px; z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        #ui-header {
+            padding: 15px; background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid #454545; cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+            font-weight: 600; user-select: none; color: #fff;
+        }
         
-        #popup { display: none; position: absolute; z-index: 100; background-color: #252526; border: 1px solid #454545; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 12px; border-radius: 5px; min-width: 200px; max-width: 300px; color: #cccccc; font-size: 13px; animation: fadeIn 0.2s ease-in-out; pointer-events: none; }
-        #popup h3 { margin: 0 0 8px 0; color: #ffffff; font-size: 14px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-        #popup .prop { margin-bottom: 4px; display: flex; }
-        #popup .label { font-weight: bold; color: #888; width: 60px; flex-shrink: 0; }
-        #popup .val { color: #4ec9b0; word-break: break-all; }
-        #popup .val.res { color: #ce9178; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .arrow { font-size: 12px; transition: transform 0.3s ease; }
+        #ui.collapsed .arrow { transform: rotate(-90deg); }
+        #ui.collapsed #stack-list-container { display: none; }
+
+        #stack-list { padding: 5px; max-height: 300px; overflow-y: auto; }
+
+        .stack-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border-radius: 6px;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .stack-row:hover { background: rgba(255, 255, 255, 0.05); }
+        
+        .color-dot { width: 12px; height: 12px; border-radius: 4px; }
+        
+        input[type="checkbox"] { accent-color: #007acc; cursor: pointer; }
+
+        #status-bar { 
+            padding: 10px 15px; font-size: 11px; color: #aaa; 
+            border-top: 1px solid #333; display: flex; justify-content: space-between;
+        }
     </style>
 </head>
 <body>
-    
-    <div id="info">
-        <div class="panel-header" id="panel-toggle">
-            <div style="display:flex; align-items:center">
-                <span class="arrow">▶</span> <span>Stacks</span>
-            </div>
-            <span id="counter-badge" class="badge">0 / 0</span>
-        </div>
-        <div style="padding: 10px; display: flex; gap: 5px; background: rgba(0,0,0,0.2);">
-            <button id="btn-center" style="flex:1; background:#0e639c; color:white; border:1px solid #1177bb; padding:8px; cursor:pointer; border-radius:3px; font-weight:bold;">🎯 Ver Todo</button>
+
+    <div id="ui">
+        <div id="ui-header">
+            <span>Stacks: <span id="counter-text" style="color: #4fc3f7;">0/0</span></span>
+            <span class="arrow">▼</span>
         </div>
         <div id="stack-list-container">
             <div id="stack-list"></div>
-            <div style="padding: 8px; border-top: 1px solid #444; font-size: 10px; color: #777; text-align: center;">Utiliza el Checkbox para eliminar/añadir</div>
+            <div id="status-bar">
+                <span>Motor:</span> <span style="color:#00ffaa">Estable (Sin Rebote)</span>
+            </div>
         </div>
     </div>
-    
-    <div id="popup"></div>
-    <div id="cy"></div>
+
+    <div id="paper"></div>
 
     <script>
-        const graphData = {{graphData}};
+        $(document).ready(function() {
 
-        var cy = cytoscape({
-            container: document.getElementById('cy'),
-            elements: graphData,
-            
-            // Configuración de Zoom/Pan
-            minZoom: 0.1, maxZoom: 2.5, wheelSensitivity: 0.2,
-            boxSelectionEnabled: false, 
+            // --- 1. CONFIGURACIÓN ---
+            const namespace = joint.shapes;
+            const graph = new joint.dia.Graph({}, { cellNamespace: namespace });
 
-            layout: { name: 'grid', fit: true, padding: 50 }, 
-            style: [
-                {
-                    selector: 'node',
-                    style: {
-                        'shape': 'round-rectangle', 'width': 'label', 'height': 'label', 'padding': '10px',
-                        'background-color': '#4a4a4a', 'label': 'data(label)', 'color': '#fff',
-                        'text-valign': 'center', 'text-halign': 'center', 'font-size': '12px',
-                        'border-width': 0, 'shadow-blur': 12, 'shadow-color': '#000', 'shadow-opacity': 0.3, 'shadow-offset-y': 4,
-                        'text-wrap': 'ellipsis', 'text-max-width': '160px',
-                        'transition-property': 'background-color, opacity', 'transition-duration': '0.3s'
-                    }
+            const paper = new joint.dia.Paper({
+                el: document.getElementById('paper'),
+                model: graph,
+                width: '100%', height: '100%',
+                gridSize: 10, drawGrid: { color: '#333', thickness: 1 },
+                background: { color: '#1e1e1e' },
+                cellViewNamespace: namespace,
+                interactive: (cellView) => {
+                    if (cellView.model.get('hidden')) return false;
+                    return cellView.model.isElement();
                 },
-                {
-                    selector: ':parent',
-                    style: {
-                        'background-opacity': 0.1, 'background-color': '#ffffff',
-                        'border-width': 2, 'border-style': 'dashed', 'border-color': '#ffffff44',
-                        'label': 'data(label)', 'text-valign': 'top', 'text-margin-y': -10,
-                        'color': '#aaa', 'font-size': '14px', 'font-weight': 'bold',
-                        'padding': '60px', // Padding grande para agarrar
-                        'compound-sizing-wrt-labels': 'include'
-                    }
-                },
-                { selector: 'node[type $= "Function"]', style: { 'background-color': '#FF9900', 'color': '#000' } }, 
-                { selector: 'node[type $= "Bucket"]', style: { 'background-color': '#3F8624' } }, 
-                { selector: 'node[type $= "Table"]', style: { 'background-color': '#3355DA' } }, 
-                { selector: 'node[type $= "Queue"]', style: { 'background-color': '#D13212' } }, 
-                { selector: 'node[type $= "Topic"]', style: { 'background-color': '#D13212' } },
-                { selector: 'node[type $= "Role"]', style: { 'shape':'ellipse', 'width':30, 'height':30, 'padding':0, 'background-color': '#777', 'label':'' } },
-                { selector: 'edge', style: { 'width': 2, 'line-color': '#888', 'opacity': 0.3, 'target-arrow-color': '#888', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier' } },
-                { selector: ':selected', style: { 'border-width': 2, 'border-color': '#fff', 'shadow-opacity': 0.8, 'z-index': 999 } },
-                { selector: 'edge:selected', style: { 'line-color': '#fff', 'target-arrow-color': '#fff', 'opacity': 1, 'width': 3 } }
-            ]
-        });
+                async: true,
+                sorting: joint.dia.Paper.sorting.APPROX
+            });
 
-        // --- GESTIÓN INTELIGENTE DEL LAYOUT ---
-        let layoutInstance = null;
+            // --- 2. DATOS ---
+            const STACK_DATA = [
+                { id: 'Frontend', color: '#252526', header: '#3F8624', resources: ['CloudFront', 'S3 Web', 'Route53'] },
+                { id: 'Backend', color: '#252526', header: '#FF9900', resources: ['API Gateway', 'Auth Lambda', 'Core Lambda'] },
+                { id: 'Database', color: '#252526', header: '#3355DA', resources: ['DynamoDB', 'Stream', 'Cache'] },
+                { id: 'Data', color: '#252526', header: '#D13212', resources: ['Kinesis', 'Firehose', 'S3 Lake'] },
+                { id: 'Ops', color: '#252526', header: '#8A2BE2', resources: ['CloudWatch', 'Alarms'] }
+            ];
 
-        // Configuración Base
-        const baseConfig = {
-            name: 'cola',
-            infinite: true,
-            fit: false, // Desactiva el ajuste automático
-            boundingBox: { x1: -1000, y1: -1000, w: 2000, h: 2000 }, // Área inicial más grande
-            edgeLength: 100, // Longitud de las aristas
-            nodeSpacing: function(node) { return node.isParent() ? 60 : 30; },
-            initialTemp: 1, // Temperatura inicial baja
-            initialEnergy: 1, // Energía inicial baja
-            damping: 0.8,
-            refresh: 1,
-            randomize: false,
-            maxSimulationTime: 60000,
-            avoidOverlap: true,
-            handleDisconnected: true,
-        };
+            const stackElements = []; 
 
-
-        // Función para ejecutar el layout dependiendo de la acción
-        function runLayout(mode) {
-            if(layoutInstance) layoutInstance.stop();
-
-            let specificConfig = { ...baseConfig };
-
-            if (mode === 'add') {
-                // MODO AÑADIR:
-                // Damos un poco de energía (initialTemp) para que el nuevo nodo
-                // se haga hueco entre los existentes.
-                specificConfig.initialTemp = 10; 
-                specificConfig.initialEnergy = 10;
-            } else if (mode === 'remove') {
-                // MODO ELIMINAR (Estilo WebCola):
-                // Temperatura CERO. El gráfico se actualiza (ya no hay nodo)
-                // pero no se aplica fuerza inicial. Todo se queda quieto.
-                specificConfig.initialTemp = 0;
-                specificConfig.initialEnergy = 0;
+            // --- 3. UI LOGIC ---
+            function updateCounter() {
+                const total = STACK_DATA.length;
+                const visible = $('.stack-checkbox:checked').length;
+                $('#counter-text').text(`${visible}/${total}`);
             }
 
-            layoutInstance = cy.layout(specificConfig);
-            layoutInstance.run();
-        }
-
-        // Arrancamos inicial
-        runLayout('add');
-        
-        cy.ready(function() { cy.fit(50); });
-
-        // Mochila de eliminados
-        const removedStacks = {};
-
-        // --- UI Logic ---
-        const stackListEl = document.getElementById('stack-list');
-        const counterBadge = document.getElementById('counter-badge');
-        const panelToggle = document.getElementById('panel-toggle');
-        const listContainer = document.getElementById('stack-list-container');
-        
-        const initialStackNodes = cy.nodes().filter(n => n.isParent());
-        const totalStacks = initialStackNodes.length;
-        
-        function updateCounter() {
-            const checkedCount = document.querySelectorAll('.stack-item input:checked').length;
-            counterBadge.innerText = `${checkedCount} / ${totalStacks}`;
-        }
-
-        initialStackNodes.forEach(stackNode => {
-            const stackName = stackNode.data('id');
-            const div = document.createElement('div');
-            div.className = 'stack-item';
-            div.innerHTML = `
-                <input type="checkbox" checked id="chk-${stackName}" value="${stackName}">
-                <label for="chk-${stackName}"><span>${stackName}</span></label>
-            `;
-            stackListEl.appendChild(div);
-
-            const checkbox = div.querySelector('input');
-            checkbox.addEventListener('change', function(e) {
-                const shouldBeVisible = e.target.checked;
-                const targetStackId = e.target.value;
-
-                if (shouldBeVisible) {
-                    // --- AÑADIR ---
-                    if (removedStacks[targetStackId]) {
-                        cy.add(removedStacks[targetStackId]);
-                        delete removedStacks[targetStackId];
-                    }
-                    // Ejecutamos layout con energía para acomodar al nuevo
-                    runLayout('add');
-                } else {
-                    // --- ELIMINAR ---
-                    const elementsToRemove = cy.elements(`node[id = "${targetStackId}"], node[parent = "${targetStackId}"]`);
-                    removedStacks[targetStackId] = elementsToRemove.remove();
-                    
-                    // Ejecutamos layout SIN energía. El hueco se queda vacío.
-                    runLayout('remove');
-                }
+            const listEl = $('#stack-list');
+            STACK_DATA.forEach(data => {
+                const row = $(`
+                    <div class="stack-row">
+                        <input type="checkbox" class="stack-checkbox" data-id="${data.id}" checked>
+                        <div class="color-dot" style="background:${data.header}"></div>
+                        <span>${data.id}</span>
+                    </div>
+                `);
                 
+                row.on('click', function(e) {
+                    if (e.target.type !== 'checkbox') {
+                        const cb = $(this).find('input');
+                        cb.prop('checked', !cb.prop('checked')).trigger('change');
+                    }
+                });
+                listEl.append(row);
+            });
+            updateCounter();
+
+            $('#ui-header').on('click', () => $('#ui').toggleClass('collapsed'));
+
+            $('.stack-checkbox').on('change', function() {
+                const stackId = $(this).data('id');
+                const isVisible = $(this).is(':checked');
+                const stack = stackElements.find(el => el.get('stackName') === stackId);
+                
+                if (stack) {
+                    const display = isVisible ? 'block' : 'none';
+                    
+                    // 1. Actualizar Stack y Hijos
+                    stack.set('hidden', !isVisible);
+                    stack.attr('./display', display);
+                    
+                    stack.getEmbeddedCells().forEach(child => {
+                        child.set('hidden', !isVisible);
+                        child.attr('./display', display);
+                    });
+
+                    // 2. Actualizar Enlaces con Lógica de Doble Verificación
+                    // Solo mostramos el enlace si AMBOS extremos son visibles
+                    const links = graph.getConnectedLinks(stack, { deep: true });
+                    
+                    links.forEach(link => {
+                        if (!isVisible) {
+                            // Si ocultamos el stack, la flecha desaparece siempre
+                            link.attr('./display', 'none');
+                        } else {
+                            // Si estamos mostrando el stack, verificamos el vecino
+                            const source = graph.getCell(link.source().id);
+                            const target = graph.getCell(link.target().id);
+                            
+                            // ¿Están visibles origen y destino?
+                            // (!get('hidden') asume que undefined es visible, lo cual es correcto al inicio)
+                            const sourceVisible = source && !source.get('hidden');
+                            const targetVisible = target && !target.get('hidden');
+
+                            if (sourceVisible && targetVisible) {
+                                link.attr('./display', 'block');
+                            } else {
+                                // Si el vecino sigue oculto, mantenemos la flecha oculta
+                                link.attr('./display', 'none');
+                            }
+                        }
+                    });
+                }
                 updateCounter();
             });
-        });
-        updateCounter();
 
-        // Panel Toggle
-        panelToggle.addEventListener('click', () => {
-            const isClosed = listContainer.style.display === '' || listContainer.style.display === 'none';
-            if (isClosed) { listContainer.style.display = 'block'; panelToggle.classList.add('expanded'); } 
-            else { listContainer.style.display = 'none'; panelToggle.classList.remove('expanded'); }
-        });
+            // --- 4. CONSTRUCCIÓN ---
+            const startX = 200;
+            let startY = 200;
 
-        // Popups
-        const popup = document.getElementById('popup');
-        cy.on('mouseover', 'node', function(evt){ 
-            const node = evt.target; const data = node.data();
-            if (node.isParent()) return;
-            showPopup(evt.renderedPosition, `
-                <h3>🧩 Recurso AWS</h3>
-                <div class="prop"><span class="label">ID:</span> <span class="val">${data.id}</span></div>
-                <div class="prop"><span class="label">Tipo:</span> <span class="val res">${data.type}</span></div>
-                <div class="prop"><span class="label">Stack:</span> <span class="val">${data.parent}</span></div>
-            `);
-        });
-        cy.on('mouseover', 'edge', function(evt){
-            const edge = evt.target; const data = edge.data();
-            showPopup(evt.renderedPosition, `
-                <h3>🔗 Dependencia</h3>
-                <div class="prop"><span class="label">De:</span> <span class="val">${data.source}</span></div>
-                <div class="prop"><span class="label">A:</span> <span class="val">${data.target}</span></div>
-            `);
-        });
-        cy.on('mouseout', 'node', function(){ popup.style.display = 'none'; });
-        cy.on('mouseout', 'edge', function(){ popup.style.display = 'none'; });
-        
-        function showPopup(pos, htmlContent) {
-            popup.innerHTML = htmlContent; popup.style.display = 'block';
-            popup.style.left = (pos.x + 20) + 'px'; popup.style.top = (pos.y + 20) + 'px';
-        }
+            STACK_DATA.forEach((data, i) => {
+                const x = startX + (i % 3) * 350;
+                const y = startY + Math.floor(i / 3) * 400;
+                const headerH = 35;
+                const width = 240;
+                const height = 200;
 
-        // Botón Centrar
-        const btnCenter = document.getElementById('btn-center');
-        btnCenter.addEventListener('click', () => {
-            cy.fit(50); 
-            // Si centras, le damos un pequeño empujón por si algo estaba atascado
-            if(layoutInstance) layoutInstance.alpha(0.5);
+                const stack = new joint.shapes.standard.HeaderedRectangle();
+                stack.position(x, y);
+                stack.resize(width, height);
+                stack.attr({
+                    root: { title: data.id },
+                    header: { fill: data.header, stroke: '#444', height: headerH },
+                    headerText: { text: data.id, fill: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: 'Segoe UI' },
+                    body: { fill: data.color, stroke: '#555', rx: 8, ry: 8 }
+                });
+                stack.set('type', 'stack');
+                stack.set('stackName', data.id);
+                stack.addTo(graph);
+                stackElements.push(stack);
+
+                data.resources.forEach((resName, idx) => {
+                    const res = new joint.shapes.standard.Rectangle();
+                    res.position(x + 20 + Math.random()*50, y + 60 + Math.random()*50);
+                    res.resize(120, 35);
+                    res.attr({
+                        body: { fill: '#333', stroke: data.header, strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
+                        label: { text: resName, fill: '#ddd', fontSize: 11, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 110, ellipsis: true } }
+                    });
+                    stack.embed(res);
+                    res.addTo(graph);
+                });
+                stack.fitEmbeds({ padding: 25 });
+            });
+
+            function linkNodes(labelA, labelB) {
+                const cells = graph.getCells();
+                const nodeA = cells.find(c => c.attr('label/text') === labelA);
+                const nodeB = cells.find(c => c.attr('label/text') === labelB);
+                if (nodeA && nodeB) {
+                    const link = new joint.shapes.standard.Link();
+                    link.source(nodeA);
+                    link.target(nodeB);
+                    link.attr({
+                        line: { stroke: '#666', strokeWidth: 1.5, targetMarker: { type: 'path', d: 'M 8 -4 0 0 8 4 z' } }
+                    });
+                    link.connector('rounded');
+                    link.addTo(graph);
+                }
+            }
+            linkNodes('CloudFront', 'API Gateway');
+            linkNodes('Core Lambda', 'DynamoDB');
+            linkNodes('Stream', 'Kinesis');
+
+            // --- 5. FÍSICA SIN VIBRACIÓN ---
+            
+            let draggedElementId = null;
+            paper.on('element:pointerdown', (ev) => draggedElementId = ev.model.id);
+            paper.on('element:pointerup', () => draggedElementId = null);
+
+            function physicsLoop() {
+                // Solo un paso por frame para evitar sobre-corrección
+                resolveInternalPhysics();
+                resolveStackCollisions();
+                requestAnimationFrame(physicsLoop);
+            }
+
+            function resolveInternalPhysics() {
+                stackElements.forEach(stack => {
+                    if (stack.get('hidden')) return;
+
+                    const children = stack.getEmbeddedCells();
+                    if (children.length === 0) return;
+
+                    // Calcular centro de masa
+                    let cx = 0, cy = 0;
+                    children.forEach(c => { const pt = c.getBBox().center(); cx += pt.x; cy += pt.y; });
+                    cx /= children.length; cy /= children.length;
+
+                    let stackMoved = false;
+
+                    // PASO 1: FUERZAS AMBIENTALES (Cohesión y Enlaces)
+                    children.forEach(child => {
+                        if (child.id === draggedElementId) { stackMoved = true; return; }
+
+                        const center = child.getBBox().center();
+                        let dx = 0, dy = 0;
+
+                        // Cohesión (Volver al centro suavemente)
+                        const distToCenter = Math.sqrt(Math.pow(cx - center.x, 2) + Math.pow(cy - center.y, 2));
+                        if (distToCenter > 10) { 
+                            const pullStrength = 0.02; 
+                            dx += (cx - center.x) * pullStrength;
+                            dy += (cy - center.y) * pullStrength;
+                        }
+
+                        // Enlaces (Tensión mínima)
+                        const connectedLinks = graph.getConnectedLinks(child);
+                        connectedLinks.forEach(link => {
+                            const sourceId = link.source().id;
+                            const targetId = link.target().id;
+                            let otherNode = null;
+                            if (sourceId === child.id && targetId) otherNode = graph.getCell(targetId);
+                            else if (targetId === child.id && sourceId) otherNode = graph.getCell(sourceId);
+
+                            if (otherNode) {
+                                const otherParent = otherNode.getParentCell();
+                                if (otherParent && otherParent.id !== stack.id) {
+                                    const otherCenter = otherNode.getBBox().center();
+                                    // REDUCIDO: Fuerza casi nula para que no arrastre el stack
+                                    dx += (otherCenter.x - center.x) * 0.0001;
+                                    dy += (otherCenter.y - center.y) * 0.0001;
+                                }
+                            }
+                        });
+
+                        // 4. FRICCIÓN Y UMBRAL
+                        dx *= 0.8;
+
+                        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+                            child.translate(dx, dy);
+                            stackMoved = true;
+                        }
+                    });
+
+                    // PASO 2: COLISIONES RÍGIDAS INTERNAS (Evitar solapamiento vertical/horizontal)
+                    const padding = 10; // Espacio mínimo entre nodos
+
+                    for (let i = 0; i < children.length; i++) {
+                        const childA = children[i];
+                        for (let j = i + 1; j < children.length; j++) {
+                            const childB = children[j];
+
+                            const bA = childA.getBBox();
+                            const bB = childB.getBBox();
+
+                            // Chequeo AABB con padding
+                            if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
+                                bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
+                                
+                                const cA = bA.center();
+                                const cB = bB.center();
+                                let dx = cA.x - cB.x;
+                                let dy = cA.y - cB.y;
+                                if (dx === 0 && dy === 0) dy = 1; // Desempate vertical por defecto
+
+                                const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
+                                const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
+
+                                let mx = 0, my = 0;
+                                // Resolver en el eje de menor penetración
+                                if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
+                                else my = penY * (dy > 0 ? 1 : -1);
+
+                                // Gestión de arrastre: El nodo arrastrado es inamovible
+                                const aDrag = childA.id === draggedElementId;
+                                const bDrag = childB.id === draggedElementId;
+
+                                const f = 1.0; // Respuesta rígida inmediata (sin rebote suave)
+
+                                if (aDrag) {
+                                    childB.translate(-mx * f, -my * f);
+                                } else if (bDrag) {
+                                    childA.translate(mx * f, my * f);
+                                } else {
+                                    childA.translate(mx * 0.5 * f, my * 0.5 * f);
+                                    childB.translate(-mx * 0.5 * f, -my * 0.5 * f);
+                                }
+                                stackMoved = true;
+                            }
+                        }
+                    }
+
+                    if (stackMoved) {
+                        stack.fitEmbeds({ padding: 25 });
+                    }
+                });
+            }
+
+            function resolveStackCollisions() {
+                const padding = 15; // Padding generoso para evitar contacto visual
+
+                for (let i = 0; i < stackElements.length; i++) {
+                    const A = stackElements[i];
+                    if (A.get('hidden')) continue;
+
+                    for (let j = i + 1; j < stackElements.length; j++) {
+                        const B = stackElements[j];
+                        if (B.get('hidden')) continue;
+
+                        const bA = A.getBBox();
+                        const bB = B.getBBox();
+
+                        if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
+                            bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
+                            
+                            const cA = bA.center();
+                            const cB = bB.center();
+                            let dx = cA.x - cB.x;
+                            let dy = cA.y - cB.y;
+                            if (dx === 0 && dy === 0) dx = 1;
+
+                            const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
+                            const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
+
+                            let mx = 0, my = 0;
+                            if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
+                            else my = penY * (dy > 0 ? 1 : -1);
+
+                            // ANTI-VIBRACIÓN STACKS
+                            // Umbral alto (3px). Si el choque es menor a 3px, lo ignoramos.
+                            if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
+
+                            const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
+                            const bDrag = (B.id === draggedElementId || B.getEmbeddedCells().some(c => c.id === draggedElementId));
+
+                            // Respuesta rápida para separar inmediatamente (0.8) en lugar de gradual
+                            const f = 0.8; 
+
+                            if (aDrag) B.translate(-mx * f, -my * f);
+                            else if (bDrag) A.translate(mx * f, my * f);
+                            else {
+                                A.translate(mx * 0.5 * f, my * 0.5 * f);
+                                B.translate(-mx * 0.5 * f, -my * 0.5 * f);
+                            }
+                        }
+                    }
+                }
+            }
+
+            requestAnimationFrame(physicsLoop);
+
+            // --- 6. CÁMARA ---
+            const zoomSpeed = 0.1;
+            paper.on('blank:mousewheel element:mousewheel', (e, x, y, delta) => {
+                e.preventDefault();
+                const oldScale = paper.scale().sx;
+                const newScale = oldScale + (delta * zoomSpeed);
+                if (newScale < 0.2 || newScale > 4) return;
+                const beta = oldScale / newScale;
+                const ax = x - (x * beta);
+                const ay = y - (y * beta);
+                const tr = paper.translate();
+                paper.translate(tr.tx - ax * newScale, tr.ty - ay * newScale);
+                paper.scale(newScale, newScale);
+            });
+
+            let panning = false, panStart = {x:0, y:0};
+            paper.on('blank:pointerdown', (e) => { panning=true; panStart={x:e.clientX, y:e.clientY}; $('#paper').addClass('panning'); });
+            $(document).on('mousemove', (e) => {
+                if(!panning) return;
+                const dx = e.clientX - panStart.x;
+                const dy = e.clientY - panStart.y;
+                panStart = {x:e.clientX, y:e.clientY};
+                const tr = paper.translate();
+                paper.translate(tr.tx + dx, tr.ty + dy);
+            });
+            $(document).on('mouseup', () => { panning=false; $('#paper').removeClass('panning'); });
+
         });
     </script>
 </body>
