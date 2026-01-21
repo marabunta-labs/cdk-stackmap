@@ -26,6 +26,12 @@
           "type": "boolean",
           "default": true,
           "description": "Mostrar el minimapa en la visualización de stacks."
+        },
+        "cdk-stackmap.nodeColorMode": {
+          "type": "string",
+          "enum": ["fill", "border"],
+          "default": "fill",
+          "description": "Modo de color para los nodos AWS: 'fill' colorea el relleno, 'border' colorea solo el borde."
         }
       }
     }

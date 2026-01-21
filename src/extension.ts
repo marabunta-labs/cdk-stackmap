@@ -65,9 +65,19 @@ export function activate(context: vscode.ExtensionContext) {
             
 				// Listener para cambios de configuración en tiempo real
 				const configListener = vscode.workspace.onDidChangeConfiguration(e => {
+					const config = vscode.workspace.getConfiguration('cdk-stackmap');
+					let changed = false;
+					const configUpdate: any = {};
 					if (e.affectsConfiguration('cdk-stackmap.showMinimap')) {
-						const newValue = vscode.workspace.getConfiguration('cdk-stackmap').get('showMinimap', true);
-						panel.webview.postMessage({ type: 'updateConfig', config: { showMinimap: newValue } });
+						configUpdate.showMinimap = config.get('showMinimap', true);
+						changed = true;
+					}
+					if (e.affectsConfiguration('cdk-stackmap.nodeColorMode')) {
+						configUpdate.nodeColorMode = config.get('nodeColorMode', 'fill');
+						changed = true;
+					}
+					if (changed) {
+						panel.webview.postMessage({ type: 'updateConfig', config: configUpdate });
 					}
 				});
 				context.subscriptions.push(configListener);
@@ -94,7 +104,8 @@ function getHtmlForWebview(context: vscode.ExtensionContext, graphData: GraphDat
 	// 4. Leer configuración y pasarla como JSON embebido, asegurando que esté disponible antes de cualquier script
 	const config = vscode.workspace.getConfiguration('cdk-stackmap');
 	const configObj = {
-		showMinimap: config.get('showMinimap', true)
+		showMinimap: config.get('showMinimap', true),
+		nodeColorMode: config.get('nodeColorMode', 'fill')
 	};
 	// Inyectar el objeto global justo después de <body>
 	html = html.replace('<body>', `<body>\n<script>window.__USER_CONFIG__ = ${JSON.stringify(configObj)};<\/script>`);
