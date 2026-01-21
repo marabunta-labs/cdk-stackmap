@@ -85,19 +85,37 @@
     </div>
 
     <script>
-                            // Escuchar mensajes de la extensión para cambios de configuración en tiempo real
-                            window.addEventListener('message', (event) => {
-                                const message = event.data;
-                                if (message && message.type === 'updateConfig' && message.config) {
-                                    if (message.config.showMinimap === false) {
-                                        $('#minimap').css('display', 'none');
-                                    } else {
-                                        $('#minimap').css('display', 'block');
-                                    }
-                                    // Actualizar el objeto global para mantener consistencia
-                                    window.__USER_CONFIG__ = Object.assign({}, window.__USER_CONFIG__, message.config);
-                                }
-                            });
+        // El listener debe registrarse después de que resources y getResourceColor estén definidos
+        $(document).ready(function() {
+            window.addEventListener('message', (event) => {
+                const message = event.data;
+                if (message && message.type === 'updateConfig' && message.config) {
+                    if (typeof message.config.showMinimap !== 'undefined') {
+                        if (message.config.showMinimap === false) {
+                            $('#minimap').css('display', 'none');
+                        } else {
+                            $('#minimap').css('display', 'block');
+                        }
+                    }
+                    if (typeof message.config.nodeColorMode !== 'undefined' && typeof window.getResourceColor === 'function' && Array.isArray(window.resources)) {
+                        window.resources.forEach((res, idx) => {
+                            if (!res._cell) return;
+                            const resourceColor = window.getResourceColor(res.data.type);
+                            if (message.config.nodeColorMode === 'border') {
+                                res._cell.attr('body/fill', '#222');
+                                res._cell.attr('body/stroke', resourceColor);
+                                res._cell.attr('body/strokeWidth', 3);
+                            } else {
+                                res._cell.attr('body/fill', resourceColor);
+                                res._cell.attr('body/stroke', '#222');
+                                res._cell.attr('body/strokeWidth', 1);
+                            }
+                        });
+                    }
+                    window.__USER_CONFIG__ = Object.assign({}, window.__USER_CONFIG__, message.config);
+                }
+            });
+        });
                     // --- ÁREA LIMITADA DEL GRAFO ---
                     const GRAPH_AREA = { minX: 0, minY: 0, maxX: 10000, maxY: 6000 };
                     function clampPosition(x, y, width, height) {
@@ -367,6 +385,7 @@
             let STACK_COLORS = ['#3F8624', '#FF9900', '#3355DA', '#D13212', '#8A2BE2'];
             const stacks = RAW_DATA.filter(e => e.data.type === 'Stack');
             const resources = RAW_DATA.filter(e => e.data.type !== 'Stack' && !e.data.source && !e.data.target);
+                        window.resources = resources;
             const edges = RAW_DATA.filter(e => e.data.source && e.data.target);
 
             function updateCounter() {
@@ -596,6 +615,7 @@
                 const spiralAngleStep = Math.PI / 5;
                 // Colores por tipo de recurso AWS
                 function getResourceColor(type) {
+                                    window.getResourceColor = getResourceColor;
                     if (!type) return '#333';
                     // Tipos cortos de CDK/CloudFormation agrupados
                     const compute = [
@@ -643,8 +663,16 @@
                     resNode.position(rx, ry);
                     resNode.resize(resWidth, resHeight);
                     const resourceColor = getResourceColor(res.data.type);
+                    // Modo de color: relleno o borde (siempre usar el valor actual de window.__USER_CONFIG__)
+                    function getBodyAttrs() {
+                        if (window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border') {
+                            return { fill: '#222', stroke: resourceColor, strokeWidth: 3, rx: 5, ry: 5, cursor: 'pointer' };
+                        } else {
+                            return { fill: resourceColor, stroke: '#222', strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' };
+                        }
+                    }
                     resNode.attr({
-                        body: { fill: resourceColor, stroke: '#222', strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' },
+                        body: getBodyAttrs(),
                         label: { text: res.data.label, fill: '#fff', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
                     });
                     resNode.set('data', res.data);
