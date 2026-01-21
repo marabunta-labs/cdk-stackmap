@@ -3,6 +3,7 @@
   "displayName": "CDK StackMap",
   "description": "Visualize AWS CDK stacks instantly.",
   "version": "0.0.1",
+  "publisher": "tu-nombre", 
   "engines": {
     "vscode": "^1.107.0"
   },
@@ -42,7 +43,7 @@
       "cdkStackMapContainer": [
         {
           "id": "cdkStackMapView",
-          "name": ""
+          "name": "Explorer" 
         }
       ]
     },
@@ -69,13 +70,9 @@
           "when": "view == cdkStackMapView",
           "group": "navigation@3"
         }
-      ],
-      "view/welcome": [
-        {
-          "view": "cdkStackMapView",
-          "contents": "No se ha seleccionado ninguna carpeta.\n\n[Seleccionar carpeta](command:cdk-stackmap.selectFolder)"
-        }
       ]
+      
+      
     },
     "configuration": {
       "type": "object",
