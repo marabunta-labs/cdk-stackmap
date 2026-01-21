@@ -14,8 +14,19 @@
   "contributes": {
     "commands": [
       {
+        "command": "cdk-stackmap.selectFolder",
+        "title": "Seleccionar carpeta",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "cdk-stackmap.visualize",
-        "title": "CDK StackMap: Visualize Stack"
+        "title": "Visualizar",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "cdk-stackmap.refresh",
+        "title": "Refrescar",
+        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
@@ -31,7 +42,38 @@
       "cdkStackMapContainer": [
         {
           "id": "cdkStackMapView",
-          "name": "Visualización de Stacks"
+          "name": ""
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "cdkStackMapView",
+        "contents": "No se ha seleccionado ningún proyecto CDK.\nPara comenzar, selecciona la carpeta raíz que contiene el archivo cdk.out.\n\n[Seleccionar Carpeta CDK](command:cdk-stackmap.selectFolder)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "cdk-stackmap.selectFolder",
+          "when": "view == cdkStackMapView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cdk-stackmap.visualize",
+          "when": "view == cdkStackMapView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "cdk-stackmap.refresh",
+          "when": "view == cdkStackMapView",
+          "group": "navigation@3"
+        }
+      ],
+      "view/welcome": [
+        {
+          "view": "cdkStackMapView",
+          "contents": "No se ha seleccionado ninguna carpeta.\n\n[Seleccionar carpeta](command:cdk-stackmap.selectFolder)"
         }
       ]
     },
@@ -46,9 +88,12 @@
         },
         "cdk-stackmap.nodeColorMode": {
           "type": "string",
-          "enum": ["fill", "border"],
+          "enum": [
+            "fill",
+            "border"
+          ],
           "default": "fill",
-          "description": "Modo de color para los nodos AWS: 'fill' colorea el relleno, 'border' colorea solo el borde."
+          "description": "Modo de color para los nodos AWS."
         }
       }
     }
