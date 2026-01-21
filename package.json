@@ -18,6 +18,23 @@
         "title": "CDK StackMap: Visualize Stack"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cdkStackMapContainer",
+          "title": "CDK StackMap",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "cdkStackMapContainer": [
+        {
+          "id": "cdkStackMapView",
+          "name": "Visualización de Stacks"
+        }
+      ]
+    },
     "configuration": {
       "type": "object",
       "title": "CDK StackMap",
