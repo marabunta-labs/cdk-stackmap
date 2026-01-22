@@ -9,6 +9,7 @@ import { CdkStackProvider } from './sidebarProvider';
 async function scanAndShowGraph(rootPath: string, context: vscode.ExtensionContext) {
 	const cdkOutPath = path.join(rootPath, 'cdk.out');
 	const manifestPath = path.join(cdkOutPath, 'manifest.json');
+	const folderName = path.basename(rootPath);
 	if (!fs.existsSync(manifestPath)) {
 		vscode.window.showErrorMessage('No se encontró cdk.out en la ruta seleccionada.');
 		return;
@@ -39,7 +40,7 @@ async function scanAndShowGraph(rootPath: string, context: vscode.ExtensionConte
 		const finalGraph: GraphData = { nodes: allNodes, edges: allEdges };
 		const panel = vscode.window.createWebviewPanel(
 			'cdkStackMap',
-			`CDK Map (${stacksFound} Stacks)`,
+			`${folderName} (${stacksFound} Stacks)`,
 			vscode.ViewColumn.Two,
 			{
 				enableScripts: true,
