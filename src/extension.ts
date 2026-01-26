@@ -4,8 +4,6 @@ import * as path from 'path';
 import { parseCloudFormation, GraphData } from './parser';
 import { CdkStackProvider } from './sidebarProvider';
 
-// ...existing code...
-
 async function scanAndShowGraph(rootPath: string, context: vscode.ExtensionContext) {
 	const cdkOutPath = path.join(rootPath, 'cdk.out');
 	const manifestPath = path.join(cdkOutPath, 'manifest.json');
@@ -158,7 +156,6 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 }
-// ...existing code...
 
 function getHtmlForWebview(context: vscode.ExtensionContext, graphData: GraphData, count: number): string {
 	// 1. Obtenemos la ruta del archivo HTML en disco

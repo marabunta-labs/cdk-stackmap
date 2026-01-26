@@ -797,6 +797,7 @@
 
         // --- Exportar SVG ---
         // --- Exportar SVG (Corregido: Error cell.size) ---
+        // --- Exportar SVG (Con Transparencia Condicional) ---
         $('#download-svg-btn').on('click', function () {
             try {
                 // 1. FREEZE
@@ -812,46 +813,50 @@
                 paper.scale(currentScale.sx, currentScale.sy);
                 paper.translate(currentTranslate.tx, currentTranslate.ty);
 
-                // 4. SMART CROP (Lógica de filtrado corregida)
-                const visibleCells = graph.getCells().filter(cell => {
-                    // A. Si está marcado como oculto explícitamente, fuera.
-                    if (cell.get('hidden')) return false;
-                    
-                    // B. GESTIÓN DE ENLACES (IMPORTANTE: Hacer esto ANTES de llamar a .size())
-                    if (cell.isLink()) {
-                        // Comprobar si los extremos del enlace son visibles
-                        const sourceId = cell.source().id;
-                        const targetId = cell.target().id;
-                        
-                        // Si apunta a coordenadas y no a elementos, lo mostramos
-                        if (!sourceId || !targetId) return true;
+                // =========================================================
+                // 4. APLICAR TRANSPARENCIAS
+                // =========================================================
+                const isBorderMode = window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border';
 
-                        const sourceCell = graph.getCell(sourceId);
-                        const targetCell = graph.getCell(targetId);
-                        
-                        // Si el origen o destino están ocultos/no existen, ocultamos el enlace
-                        if (!sourceCell || sourceCell.get('hidden')) return false;
-                        if (!targetCell || targetCell.get('hidden')) return false;
-                        
-                        return true; // Es un enlace visible, lo incluimos
+                graph.getElements().forEach(element => {
+                    const elGroup = svgExport.querySelector(`[model-id="${element.id}"]`);
+                    if (!elGroup) return;
+
+                    const body = elGroup.querySelector('[joint-selector="body"]') || 
+                                 elGroup.querySelector('rect') || 
+                                 elGroup.querySelector('path');
+                    
+                    if (body) {
+                        const type = element.get('type');
+
+                        // Stacks siempre transparentes
+                        if (type === 'stack' || element.get('stackName')) {
+                            body.setAttribute('fill', 'none');
+                        }
+                        // Nodos transparentes solo si estamos en modo borde
+                        else if (isBorderMode) {
+                            body.setAttribute('fill', 'none');
+                        }
                     }
+                });
 
-                    // C. GESTIÓN DE ELEMENTOS (Nodos y Stacks)
-                    // Ahora es seguro llamar a .size() porque ya sabemos que NO es un enlace
+                // 5. SMART CROP
+                const visibleCells = graph.getCells().filter(cell => {
+                    if (cell.get('hidden')) return false;
+                    if (cell.isLink()) {
+                        const s = cell.source().id; const t = cell.target().id;
+                        if (!s || !t) return true;
+                        const sC = graph.getCell(s); const tC = graph.getCell(t);
+                        if (!sC || sC.get('hidden') || !tC || tC.get('hidden')) return false;
+                        return true;
+                    }
                     const size = cell.size();
-                    
-                    // Ignorar el borde gigante del área (filtro por tamaño)
                     if (size.width > 9000 || size.height > 5000) return false;
-
                     return true;
                 });
 
-                // Calcular BBox solo de lo visible
                 let contentBBox = graph.getCellsBBox(visibleCells);
-                
-                if (!contentBBox) {
-                    contentBBox = { x: 0, y: 0, width: 100, height: 100 };
-                }
+                if (!contentBBox) contentBBox = { x: 0, y: 0, width: 100, height: 100 };
 
                 const padding = 50;
                 const minX = contentBBox.x - padding;
@@ -859,23 +864,48 @@
                 const vbW = contentBBox.width + (padding * 2);
                 const vbH = contentBBox.height + (padding * 2);
 
-                // 5. ATRIBUTOS
+                // 6. ATRIBUTOS
                 svgExport.removeAttribute('style');
                 svgExport.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
                 svgExport.setAttribute('viewBox', `${minX} ${minY} ${vbW} ${vbH}`);
                 svgExport.setAttribute('width', vbW + 'px');
                 svgExport.setAttribute('height', vbH + 'px');
 
-                // 6. ESTILOS
+                // 7. ESTILOS
                 const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
                 style.textContent = `
-                    text { font-family: "Segoe UI", sans-serif; }
-                    .joint-element { fill: #252526; }
-                    [display="none"] { visibility: hidden; }
+                    text { 
+                        font-family: "Segoe UI", sans-serif;
+                        
+                        /* 1. Texto oscuro (casi negro) para que se lea en papel/fondo blanco */
+                        fill: #111111;
+                        font-weight: 600; /* Un poco de negrita ayuda */
+
+                        /* 2. El TRUCO DEL HALO: Borde blanco grueso */
+                        stroke: #ffffff;
+                        stroke-width: 3px;
+                        stroke-linejoin: round; /* Bordes redondeados para que no haya picos */
+                        
+                        /* 3. MÁGIA: Dibuja el borde DETRÁS del relleno del texto */
+                        /* Si no pones esto, el borde tapará la letra fina */
+                        paint-order: stroke fill;
+                        
+                        /* Renderizado nítido */
+                        text-rendering: geometricPrecision; 
+                        -webkit-font-smoothing: antialiased;
+                    }
+
+                    /* Mantenemos el color oscuro para las líneas/bordes de los nodos */
+                    .joint-element { 
+                        fill: #252526; 
+                    }
+                    
+                    /* Ocultar elementos display:none */
+                    [display="none"] { visibility: hidden; } 
                 `;
                 svgExport.insertBefore(style, svgExport.firstChild);
 
-                // 7. ENVIAR
+                // 8. ENVIAR
                 const serializer = new XMLSerializer();
                 const svgString = serializer.serializeToString(svgExport);
 
@@ -887,8 +917,11 @@
             } catch (error) { console.error("Error exportando SVG:", error); }
         });
 
+
         // --- Exportar PNG ---
-        // --- Exportar PNG (Corregido: Error cell.size) ---
+        // --- Exportar PNG (Con Stacks Transparentes) ---
+        // --- Exportar PNG (Con Transparencia Condicional) ---
+        // --- Exportar PNG (Con Transparencia Condicional) ---
         $('#download-png-btn').on('click', function () {
             try {
                 // 1. FREEZE
@@ -904,39 +937,57 @@
                 paper.scale(currentScale.sx, currentScale.sy);
                 paper.translate(currentTranslate.tx, currentTranslate.ty);
 
-                // 4. SMART CROP (Lógica de filtrado corregida)
-                const visibleCells = graph.getCells().filter(cell => {
-                    // A. Ocultos fuera
-                    if (cell.get('hidden')) return false;
-                    
-                    // B. ENLACES (Primero, para evitar crash de .size())
-                    if (cell.isLink()) {
-                        const sourceId = cell.source().id;
-                        const targetId = cell.target().id;
-                        
-                        if (!sourceId || !targetId) return true;
+                // =========================================================
+                // 4. APLICAR TRANSPARENCIAS (Stacks y Nodos)
+                // =========================================================
+                
+                // Verificamos si el usuario tiene activado el modo "Solo Borde"
+                const isBorderMode = window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border';
 
-                        const sourceCell = graph.getCell(sourceId);
-                        const targetCell = graph.getCell(targetId);
+                graph.getElements().forEach(element => {
+                    // Buscamos el elemento correspondiente en el SVG clonado
+                    const elGroup = svgExport.querySelector(`[model-id="${element.id}"]`);
+                    if (!elGroup) return;
+
+                    // Buscamos el cuerpo (rectángulo principal)
+                    // JointJS suele usar joint-selector="body", si no, buscamos el primer rect/path
+                    const body = elGroup.querySelector('[joint-selector="body"]') || 
+                                 elGroup.querySelector('rect') || 
+                                 elGroup.querySelector('path');
+                    
+                    if (body) {
+                        const type = element.get('type');
+
+                        // CASO A: Es un STACK -> Siempre transparente
+                        if (type === 'stack' || element.get('stackName')) {
+                            body.setAttribute('fill', 'none');
+                        }
                         
-                        if (!sourceCell || sourceCell.get('hidden')) return false;
-                        if (!targetCell || targetCell.get('hidden')) return false;
-                        
+                        // CASO B: Es un NODO (Recurso) y estamos en modo Borde
+                        // Si isBorderMode es true, el nodo es negro (#222). Lo volvemos transparente.
+                        else if (isBorderMode) {
+                            body.setAttribute('fill', 'none');
+                        }
+                    }
+                });
+
+                // 5. SMART CROP (Recorte)
+                const visibleCells = graph.getCells().filter(cell => {
+                    if (cell.get('hidden')) return false;
+                    if (cell.isLink()) {
+                        const s = cell.source().id; const t = cell.target().id;
+                        if (!s || !t) return true;
+                        const sC = graph.getCell(s); const tC = graph.getCell(t);
+                        if (!sC || sC.get('hidden') || !tC || tC.get('hidden')) return false;
                         return true;
                     }
-
-                    // C. ELEMENTOS (Seguro llamar a .size())
                     const size = cell.size();
                     if (size.width > 9000 || size.height > 5000) return false;
-
                     return true;
                 });
 
                 let contentBBox = graph.getCellsBBox(visibleCells);
-                
-                if (!contentBBox) {
-                    contentBBox = { x: 0, y: 0, width: 100, height: 100 };
-                }
+                if (!contentBBox) contentBBox = { x: 0, y: 0, width: 100, height: 100 };
 
                 const padding = 50;
                 const minX = contentBBox.x - padding;
@@ -944,11 +995,10 @@
                 const vbW = contentBBox.width + (padding * 2);
                 const vbH = contentBBox.height + (padding * 2);
 
-                // 5. ESCALADO
+                // 6. ESCALADO (Calidad)
                 let exportScale = 4; 
                 let finalWidth = vbW * exportScale;
                 let finalHeight = vbH * exportScale;
-
                 const MAX_PIXELS = 25000000; 
                 if (finalWidth * finalHeight > MAX_PIXELS) {
                     exportScale = Math.sqrt(MAX_PIXELS / (vbW * vbH));
@@ -962,20 +1012,41 @@
                 svgExport.setAttribute('width', finalWidth);
                 svgExport.setAttribute('height', finalHeight);
 
-                // 6. ESTILOS
+                // 7. ESTILOS INYECTADOS                
                 const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
                 style.textContent = `
                     text { 
-                        font-family: "Segoe UI", sans-serif; 
+                        font-family: "Segoe UI", sans-serif;
+                        
+                        /* 1. Texto oscuro (casi negro) para que se lea en papel/fondo blanco */
+                        fill: #111111;
+                        font-weight: 600; /* Un poco de negrita ayuda */
+
+                        /* 2. El TRUCO DEL HALO: Borde blanco grueso */
+                        stroke: #ffffff;
+                        stroke-width: 3px;
+                        stroke-linejoin: round; /* Bordes redondeados para que no haya picos */
+                        
+                        /* 3. MÁGIA: Dibuja el borde DETRÁS del relleno del texto */
+                        /* Si no pones esto, el borde tapará la letra fina */
+                        paint-order: stroke fill;
+                        
+                        /* Renderizado nítido */
                         text-rendering: geometricPrecision; 
                         -webkit-font-smoothing: antialiased;
                     }
-                    .joint-element { fill: #252526; }
+
+                    /* Mantenemos el color oscuro para las líneas/bordes de los nodos */
+                    .joint-element { 
+                        fill: #252526; 
+                    }
+                    
+                    /* Ocultar elementos display:none */
                     [display="none"] { visibility: hidden; } 
                 `;
                 svgExport.insertBefore(style, svgExport.firstChild);
 
-                // 7. RENDERIZADO
+                // 8. RENDERIZADO
                 const serializer = new XMLSerializer();
                 const svgString = serializer.serializeToString(svgExport);
                 const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
@@ -988,8 +1059,13 @@
                     canvas.height = finalHeight;
                     const ctx = canvas.getContext('2d');
 
-                    // ctx.fillStyle = '#1e1e1e';
+                    // --- IMPORTANTE: FONDO DEL PNG ---
+                    // Si quieres que sea REALMENTE transparente, comenta las líneas fillStyle y fillRect.
+                    // Si quieres un fondo solido oscuro detrás de los nodos transparentes, déjalas.
+                    
+                    // ctx.fillStyle = '#1e1e1e'; 
                     // ctx.fillRect(0, 0, canvas.width, canvas.height);
+
                     ctx.imageSmoothingEnabled = true;
                     ctx.imageSmoothingQuality = 'high';
 
@@ -1002,7 +1078,6 @@
 
             } catch (error) { console.error("Error exportando PNG:", error); }
         });
-        
 
 
         // =================================================================
