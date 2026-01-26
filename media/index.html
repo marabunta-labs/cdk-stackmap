@@ -173,6 +173,9 @@
         // 2. CONFIGURACIÓN E INICIALIZACIÓN
         // =================================================================
         
+        const STACK_HEADER_HEIGHT = 40;
+        const HEADER_PADDING = 10;
+
         // Listener de mensajes de la extensión (Configuración)
         window.addEventListener('message', (event) => {
             const message = event.data;
@@ -403,7 +406,10 @@
             const row = Math.floor(i / stacksPerRow);
             const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30;
             const y = startY + row * STACK_Y_SPACING + Math.random() * 60 - 30;
-            const headerH = 35;
+            
+            // Usamos la constante global
+            const headerH = STACK_HEADER_HEIGHT; 
+            
             const width = 240;
             const height = 200;
             const headerColor = STACK_COLORS[i % STACK_COLORS.length];
@@ -414,7 +420,16 @@
             stack.attr({
                 root: { title: stackData.data.id },
                 header: { fill: headerColor, stroke: '#444', height: headerH },
-                headerText: { text: stackData.data.label, fill: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: 'Segoe UI' },
+                
+                // CAMBIO AQUÍ: Fuente más grande (15px)
+                headerText: { 
+                    text: stackData.data.label, 
+                    fill: '#fff', 
+                    fontSize: 15, // Aumentado
+                    fontWeight: 'bold', 
+                    fontFamily: 'Segoe UI' 
+                },
+                
                 body: { fill: '#252526', stroke: '#555', rx: 8, ry: 8 }
             });
             stack.set('type', 'stack');
@@ -424,8 +439,10 @@
 
             const childResources = resources.filter(r => r.data.parent === stackData.data.id);
             const resWidth = 90, resHeight = 28;
+            // Ajustamos el centro vertical (cy) para considerar el nuevo header
             const cx = x + width / 2 - resWidth / 2;
-            const cy = y + headerH + (height - 40) / 2 - resHeight / 2;
+            const cy = y + headerH + (height - headerH - 20) / 2 - resHeight / 2;
+            
             const spiralStep = 18;
             const spiralAngleStep = Math.PI / 5;
 
@@ -453,7 +470,15 @@
                 resNode.addTo(graph);
                 res._cell = resNode;
             });
-            stack.fitEmbeds({ padding: 25 });
+            stack.fitEmbeds({ 
+                padding: { 
+                    top: STACK_HEADER_HEIGHT + 10, 
+                    bottom: 20, 
+                    left: 20, 
+                    right: 20 
+                } 
+            });
+            stack._cell = stack;
         });
 
         edges.forEach(edge => {
@@ -516,7 +541,12 @@
                 const bbox = draggingSingleNodeStack.getBBox();
                 const clamped = clampPosition(newX, newY, bbox.width, bbox.height);
                 draggingSingleNodeStack.position(clamped.x, clamped.y);
-                draggingSingleNodeStack.fitEmbeds({ padding: 25 });
+                draggingSingleNodeStack.fitEmbeds({ 
+                            padding: { 
+                                top: STACK_HEADER_HEIGHT + 10, 
+                                bottom: 20, left: 20, right: 20 
+                            } 
+                        });
             } else if (draggedElementId) {
                 const model = ev.model;
                 const bbox = model.getBBox();
@@ -652,7 +682,14 @@
                     }
                 }
                 if (stackMoved) {
-                    stack.fitEmbeds({ padding: 30 });
+                    stack.fitEmbeds({ 
+                        padding: { 
+                            top: STACK_HEADER_HEIGHT + 10, 
+                            bottom: 20, 
+                            left: 20, 
+                            right: 20 
+                        } 
+                    });
                     anyMoved = true;
                 }
             });
@@ -660,11 +697,18 @@
             stackElements.forEach(stack => {
                 if (stack.get('hidden')) return;
                 const bbox = stack.getBBox();
+                // PADDING PARA EL CLAMP DE SEGURIDAD (Coincide con fitEmbeds)
+                const topPad = STACK_HEADER_HEIGHT + 10; 
+                
                 stack.getEmbeddedCells().forEach(child => {
                     const childBox = child.getBBox();
-                    let relX = childBox.x - bbox.x; let relY = childBox.y - bbox.y;
-                    relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
-                    relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
+                    let relX = childBox.x - bbox.x;
+                    let relY = childBox.y - bbox.y;
+                    
+                    // Aquí usamos topPad como límite mínimo
+                    relX = Math.max(20, Math.min(relX, bbox.width - childBox.width - 20));
+                    relY = Math.max(topPad, Math.min(relY, bbox.height - childBox.height - 20));
+                    
                     child.position(bbox.x + relX, bbox.y + relY);
                 });
             });
