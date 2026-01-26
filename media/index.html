@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- CSP Permisiva -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com;">
 
-    <!-- Dependencias -->
     <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.7.7/joint.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
@@ -21,7 +19,7 @@
         #paper { width: 100%; height: 100%; cursor: grab; background-color: #1e1e1e; }
         #paper.panning { cursor: grabbing; }
 
-        /* UI Panel */
+        /* UI Panel Container */
         #ui {
             position: absolute; top: 20px; left: 20px;
             background: rgba(30, 30, 30, 0.95); 
@@ -32,1116 +30,1141 @@
             display: flex; flex-direction: column;
             font-size: 13px; z-index: 100;
             backdrop-filter: blur(10px);
-        }
-
-        #ui-header {
-            padding: 15px; background: rgba(255, 255, 255, 0.03);
-            border-bottom: 1px solid #454545; cursor: pointer;
-            display: flex; justify-content: space-between; align-items: center;
-            font-weight: 600; user-select: none; color: #fff;
+            padding-bottom: 10px;
+            transition: max-height 0.3s;
         }
         
+        #ui.collapsed .ui-section-content, 
+        #ui.collapsed #center-view-btn { display: none; }
+
+        /* Cabeceras (Stacks y Descargar) */
+        .ui-section-header {
+            background: #333;
+            padding: 12px 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #444;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .ui-section-header:hover { background: #3a3a3a; }
+
+        #counter-text { color: #4fc3f7; font-weight: bold; }
         .arrow { font-size: 12px; transition: transform 0.3s ease; }
-        #ui.collapsed .arrow { transform: rotate(-90deg); }
-        #ui.collapsed #stack-list-container { display: none; }
+        .ui-section-header.active .arrow { transform: rotate(180deg); }
 
-        #stack-list { padding: 5px; max-height: 300px; overflow-y: auto; }
+        /* Contenido Desplegable (Animación) */
+        .ui-section-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background: #222;
+        }
 
+        .ui-section-content.open {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        /* Lista de Stacks */
+        #stack-list { padding: 5px; }
         .stack-row {
             display: flex; align-items: center; gap: 10px;
             padding: 8px 10px; border-radius: 6px;
             cursor: pointer; transition: background 0.2s;
         }
         .stack-row:hover { background: rgba(255, 255, 255, 0.05); }
-        
-        .color-dot { width: 12px; height: 12px; border-radius: 4px; }
-        
         input[type="checkbox"] { accent-color: #007acc; cursor: pointer; }
 
-        #status-bar { 
-            padding: 10px 15px; font-size: 11px; color: #aaa; 
-            border-top: 1px solid #333; display: flex; justify-content: space-between;
+        /* Botón Centrar Vista */
+        #center-view-btn {
+            display: block;
+            margin: 10px auto 0 auto;
+            width: 92%;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            background: #4fc3f722;
+            color: #4fc3f7;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
         }
+
+        #center-view-btn:hover {
+            background: #4fc3f7;
+            color: #111;
+        }
+
+        /* Botones de Descarga (Estilo Lista) */
+        .download-item {
+            width: 100%;
+            padding: 12px 15px;
+            background: transparent;
+            border: none;
+            color: #bbb;
+            text-align: left;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            font-size: 13px;
+            transition: color 0.2s, background 0.2s;
+        }
+        .download-item:last-child { border-bottom: none; }
+        .download-item:hover { background: #2a2a2a; color: #fff; }
+
+        /* #download-png-btn { color: #4fc3f7; }
+        #download-png-btn:hover { color: #8bf6ff; } */
+
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <div id="ui-header">
-            <span>Stacks: <span id="counter-text" style="color: #4fc3f7;">0/0</span></span>
+        <div class="ui-section-header" id="stacks-header">
+            <span>Stacks: <span id="counter-text">0/0</span></span>
             <span class="arrow">▼</span>
         </div>
-        <div id="stack-list-container">
+        <div class="ui-section-content" id="stacks-content">
             <div id="stack-list"></div>
         </div>
-        <button id="center-view-btn" style="margin:18px 15px 10px 15px;padding:8px 18px;border:none;border-radius:5px;background:#4fc3f7;color:#222;font-weight:600;cursor:pointer;font-size:15px;width:92%;align-self:center;">Centrar vista</button>
+
+        <div class="ui-section-header" id="download-header">
+            <span>Descargar</span>
+            <span class="arrow">▼</span>
+        </div>
+        <div class="ui-section-content" id="download-content">
+            <div class="download-list">
+                <button id="download-svg-btn" class="download-item">Descargar SVG</button>
+                <button id="download-png-btn" class="download-item">Descargar PNG</button>
+            </div>
+        </div>
+
+        <button id="center-view-btn">Centrar vista</button>
     </div>
 
     <div id="paper"></div>
 
-    <!-- Minimap overlay -->
     <div id="minimap" style="position:fixed;right:24px;bottom:24px;width:220px;height:140px;background:rgba(30,30,30,0.95);border:2px solid #4fc3f7;border-radius:10px;z-index:200;box-shadow:0 2px 12px #0008;pointer-events:auto;">
         <svg id="minimap-svg" width="220" height="140" style="display:block;cursor:pointer;pointer-events:auto;"></svg>
     </div>
 
-    <script>
-        // El listener debe registrarse después de que resources y getResourceColor estén definidos
-        $(document).ready(function() {
-            window.addEventListener('message', (event) => {
-                const message = event.data;
-                if (message && message.type === 'updateConfig' && message.config) {
-                    if (typeof message.config.showMinimap !== 'undefined') {
-                        if (message.config.showMinimap === false) {
-                            $('#minimap').css('display', 'none');
-                        } else {
-                            $('#minimap').css('display', 'block');
-                        }
+<script>
+    // =================================================================
+    // 1. API GLOBAL (Crucial: Solo se llama una vez)
+    // =================================================================
+    const vscode = acquireVsCodeApi(); 
+
+    // Definir área del grafo GLOBAL para que todos la vean
+    const GRAPH_AREA = { minX: -5000, minY: -3000, maxX: 5000, maxY: 3000 };
+
+    function clampPosition(x, y, width, height) {
+        const clampedX = Math.max(GRAPH_AREA.minX, Math.min(x, GRAPH_AREA.maxX - width));
+        const clampedY = Math.max(GRAPH_AREA.minY, Math.min(y, GRAPH_AREA.maxY - height));
+        return { x: clampedX, y: clampedY };
+    }
+
+    $(document).ready(function() {
+        
+        // =================================================================
+        // 2. CONFIGURACIÓN E INICIALIZACIÓN
+        // =================================================================
+        
+        // Listener de mensajes de la extensión (Configuración)
+        window.addEventListener('message', (event) => {
+            const message = event.data;
+            if (message && message.type === 'updateConfig' && message.config) {
+                if (typeof message.config.showMinimap !== 'undefined') {
+                    if (message.config.showMinimap === false) {
+                        $('#minimap').css('display', 'none');
+                    } else {
+                        $('#minimap').css('display', 'block');
                     }
-                    if (typeof message.config.nodeColorMode !== 'undefined' && typeof window.getResourceColor === 'function' && Array.isArray(window.resources)) {
-                        window.resources.forEach((res, idx) => {
-                            if (!res._cell) return;
-                            const resourceColor = window.getResourceColor(res.data.type);
-                            if (message.config.nodeColorMode === 'border') {
-                                res._cell.attr('body/fill', '#222');
-                                res._cell.attr('body/stroke', resourceColor);
-                                res._cell.attr('body/strokeWidth', 3);
-                            } else {
-                                res._cell.attr('body/fill', resourceColor);
-                                res._cell.attr('body/stroke', '#222');
-                                res._cell.attr('body/strokeWidth', 1);
-                            }
-                        });
-                    }
-                    window.__USER_CONFIG__ = Object.assign({}, window.__USER_CONFIG__, message.config);
                 }
-            });
+                // Actualizar colores si cambia el modo
+                if (typeof message.config.nodeColorMode !== 'undefined' && typeof window.getResourceColor === 'function' && Array.isArray(window.resources)) {
+                    window.resources.forEach((res) => {
+                        if (!res._cell) return;
+                        const resourceColor = window.getResourceColor(res.data.type);
+                        if (message.config.nodeColorMode === 'border') {
+                            res._cell.attr('body/fill', '#222');
+                            res._cell.attr('body/stroke', resourceColor);
+                            res._cell.attr('body/strokeWidth', 3);
+                        } else {
+                            res._cell.attr('body/fill', resourceColor);
+                            res._cell.attr('body/stroke', '#222');
+                            res._cell.attr('body/strokeWidth', 1);
+                        }
+                    });
+                }
+                window.__USER_CONFIG__ = Object.assign({}, window.__USER_CONFIG__, message.config);
+            }
         });
-                    // --- ÁREA LIMITADA DEL GRAFO ---
-                    const GRAPH_AREA = { minX: 0, minY: 0, maxX: 10000, maxY: 6000 };
-                    function clampPosition(x, y, width, height) {
-                        const clampedX = Math.max(GRAPH_AREA.minX, Math.min(x, GRAPH_AREA.maxX - width));
-                        const clampedY = Math.max(GRAPH_AREA.minY, Math.min(y, GRAPH_AREA.maxY - height));
-                        return { x: clampedX, y: clampedY };
-                    }
-        $(document).ready(function() {
-                        // Ocultar minimapa según config al cargar
-                        if (window.__USER_CONFIG__ && window.__USER_CONFIG__.showMinimap === false) {
-                            $('#minimap').css('display', 'none');
-                        } else {
-                            $('#minimap').css('display', 'block');
-                        }
-            // --- INTERACTIVIDAD DEL MINIMAPA: asegurar eventos y robustez ---
-            $('#minimap').on('mousemove', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                $('#minimap-svg').css('cursor', 'pointer');
-                const rect = this.getBoundingClientRect();
-                const mx = e.clientX - rect.left - 10;
-                const my = e.clientY - rect.top - 10;
-                window._minimapPreview = { mx, my };
-            });
-            $('#minimap').on('mouseleave', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                $('#minimap-svg').css('cursor', 'default');
-                window._minimapPreview = null;
-            });
-            $('#minimap').on('mousedown', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-            });
-            $('#minimap').on('click', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                // Calcular posición lógica en el área
-                const rect = this.getBoundingClientRect();
-                const mx = e.clientX - rect.left - 10;
-                const my = e.clientY - rect.top - 10;
-                const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
-                const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
-                const scaleX = 200 / areaW;
-                                                                const scaleY = 120 / areaH;
-                                                                // Convertir a coordenadas del área
-                                                                const logicalX = mx / scaleX + GRAPH_AREA.minX;
-                                                                const logicalY = my / scaleY + GRAPH_AREA.minY;
-                                                                // Centrar la vista en ese punto
-                                                                const targetScale = paper.scale().sx;
-                                                                const paperRect = paper.el.getBoundingClientRect();
-                                                                const centerX = paperRect.width / 2;
-                                                                const centerY = paperRect.height / 2;
-                                                                paper.translate(centerX - logicalX * targetScale, centerY - logicalY * targetScale);
-                                                            });
-                                                // --- MINIMAPA ---
-                                                function renderMinimap() {
-                                                    const svg = document.getElementById('minimap-svg');
-                                                    // Clear previous
-                                                    while (svg.firstChild) svg.removeChild(svg.firstChild);
-                                                    // Area border
-                                                    const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
-                                                    const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
-                                                    const scaleX = 200 / areaW;
-                                                    const scaleY = 120 / areaH;
-                                                    // Draw area border
-                                                    const border = document.createElementNS('http://www.w3.org/2000/svg','rect');
-                                                    border.setAttribute('x', 10);
-                                                    border.setAttribute('y', 10);
-                                                    border.setAttribute('width', 200);
-                                                    border.setAttribute('height', 120);
-                                                    border.setAttribute('stroke', '#4fc3f7');
-                                                    border.setAttribute('stroke-width', '2');
-                                                    border.setAttribute('fill', 'none');
-                                                    svg.appendChild(border);
-                                                    // Draw stacks
-                                                    stackElements.forEach((stack, idx) => {
-                                                        if (stack.get('hidden')) return;
-                                                        const bbox = stack.getBBox();
-                                                        const x = 10 + (bbox.x - GRAPH_AREA.minX) * scaleX;
-                                                        const y = 10 + (bbox.y - GRAPH_AREA.minY) * scaleY;
-                                                        const w = bbox.width * scaleX;
-                                                        const h = bbox.height * scaleY;
-                                                        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-                                                        rect.setAttribute('x', x);
-                                                        rect.setAttribute('y', y);
-                                                        rect.setAttribute('width', w);
-                                                        rect.setAttribute('height', h);
-                                                        rect.setAttribute('fill', STACK_COLORS[idx % STACK_COLORS.length]);
-                                                        rect.setAttribute('fill-opacity', '0.7');
-                                                        rect.setAttribute('stroke', '#fff');
-                                                        rect.setAttribute('stroke-width', '1');
-                                                        svg.appendChild(rect);
-                                                    });
 
-                                                    // Draw viewport rectangle
-                                                    const paperRect = paper.el.getBoundingClientRect();
-                                                    const scale = paper.scale().sx;
-                                                    const tr = paper.translate();
-                                                    // Top-left logical coordinates
-                                                    const logicalX = (-tr.tx) / scale;
-                                                    const logicalY = (-tr.ty) / scale;
-                                                    // Size in logical coordinates
-                                                    const logicalW = paperRect.width / scale;
-                                                    const logicalH = paperRect.height / scale;
-                                                    // Convert to minimap coordinates
-                                                    const minix = 10 + (logicalX - GRAPH_AREA.minX) * scaleX;
-                                                    const miniy = 10 + (logicalY - GRAPH_AREA.minY) * scaleY;
-                                                    const miniw = logicalW * scaleX;
-                                                    const minih = logicalH * scaleY;
-                                                    const viewRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-                                                    viewRect.setAttribute('x', minix);
-                                                    viewRect.setAttribute('y', miniy);
-                                                    viewRect.setAttribute('width', miniw);
-                                                    viewRect.setAttribute('height', minih);
-                                                    viewRect.setAttribute('fill', '#4fc3f7');
-                                                    viewRect.setAttribute('fill-opacity', '0.15');
-                                                    viewRect.setAttribute('stroke', '#4fc3f7');
-                                                    viewRect.setAttribute('stroke-width', '2');
-                                                    svg.appendChild(viewRect);
+        // Visibilidad inicial del minimapa
+        if (window.__USER_CONFIG__ && window.__USER_CONFIG__.showMinimap === false) {
+            $('#minimap').css('display', 'none');
+        } else {
+            $('#minimap').css('display', 'block');
+        }
 
-                                                    // Draw preview rectangle if hovering minimap
-                                                    if (window._minimapPreview) {
-                                                        const { mx, my } = window._minimapPreview;
-                                                        const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
-                                                        const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
-                                                        const scaleX = 200 / areaW;
-                                                        const scaleY = 120 / areaH;
-                                                        const targetScale = paper.scale().sx;
-                                                        const paperRect = paper.el.getBoundingClientRect();
-                                                        const logicalW = paperRect.width / targetScale;
-                                                        const logicalH = paperRect.height / targetScale;
-                                                        const logicalX = mx / scaleX + GRAPH_AREA.minX - logicalW/2;
-                                                        const logicalY = my / scaleY + GRAPH_AREA.minY - logicalH/2;
-                                                        const minix2 = 10 + (logicalX - GRAPH_AREA.minX) * scaleX;
-                                                        const miniy2 = 10 + (logicalY - GRAPH_AREA.minY) * scaleY;
-                                                        const previewRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-                                                        previewRect.setAttribute('x', minix2);
-                                                        previewRect.setAttribute('y', miniy2);
-                                                        previewRect.setAttribute('width', logicalW * scaleX);
-                                                        previewRect.setAttribute('height', logicalH * scaleY);
-                                                        previewRect.setAttribute('fill', '#fff');
-                                                        previewRect.setAttribute('fill-opacity', '0.10');
-                                                        previewRect.setAttribute('stroke', '#fff');
-                                                        previewRect.setAttribute('stroke-width', '2');
-                                                        svg.appendChild(previewRect);
-                                                    }
-                                                            // --- INTERACTIVIDAD DEL MINIMAPA ---
-                                                            $('#minimap-svg').on('mousemove', function(e) {
-                                                                $(this).css('cursor', 'pointer');
-                                                                const rect = this.getBoundingClientRect();
-                                                                const mx = e.clientX - rect.left - 10;
-                                                                const my = e.clientY - rect.top - 10;
-                                                                window._minimapPreview = { mx, my };
-                                                            });
-                                                            $('#minimap-svg').on('mouseleave', function(e) {
-                                                                $(this).css('cursor', 'default');
-                                                                window._minimapPreview = null;
-                                                            });
-                                                            $('#minimap-svg').on('click', function(e) {
-                                                                const rect = this.getBoundingClientRect();
-                                                                const mx = e.clientX - rect.left - 10;
-                                                                const my = e.clientY - rect.top - 10;
-                                                                const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
-                                                                const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
-                                                                const scaleX = 200 / areaW;
-                                                                const scaleY = 120 / areaH;
-                                                                const targetScale = paper.scale().sx;
-                                                                const paperRect = paper.el.getBoundingClientRect();
-                                                                const logicalW = paperRect.width / targetScale;
-                                                                const logicalH = paperRect.height / targetScale;
-                                                                // Center the view so the previewed rectangle is the new viewport
-                                                                const logicalX = mx / scaleX + GRAPH_AREA.minX - logicalW/2;
-                                                                const logicalY = my / scaleY + GRAPH_AREA.minY - logicalH/2;
-                                                                const centerX = paperRect.width / 2;
-                                                                const centerY = paperRect.height / 2;
-                                                                paper.translate(centerX - (logicalX + logicalW/2) * targetScale, centerY - (logicalY + logicalH/2) * targetScale);
-                                                            });
-                                                }
+        // Inicializar Graph y Paper
+        const namespace = joint.shapes;
+        const graph = new joint.dia.Graph({}, { cellNamespace: namespace });
 
-                                                // Render minimap on every animation frame
-                                                function minimapLoop() {
-                                                    renderMinimap();
-                                                    requestAnimationFrame(minimapLoop);
-                                                }
-                                                requestAnimationFrame(minimapLoop);
-                                    // Centrar la vista al inicio
-                                    setTimeout(() => {
-                                        const targetScale = 0.4;
-                                        paper.scale(targetScale, targetScale);
-                                        const areaCenterX = (GRAPH_AREA.maxX - GRAPH_AREA.minX) / 2;
-                                        const areaCenterY = (GRAPH_AREA.maxY - GRAPH_AREA.minY) / 2;
-                                        const paperRect = paper.el.getBoundingClientRect();
-                                        const centerX = paperRect.width / 2;
-                                        const centerY = paperRect.height / 2;
-                                        paper.translate(centerX - areaCenterX * targetScale, centerY - areaCenterY * targetScale);
-                                    }, 0);
-                        // --- DIBUJAR LÍMITES DEL ÁREA DEL GRAFO ---
-                        // Añadir un rectángulo visual para mostrar los límites
-                        setTimeout(() => {
-                            const areaBorder = new joint.shapes.standard.Rectangle();
-                            areaBorder.position(GRAPH_AREA.minX, GRAPH_AREA.minY);
-                            areaBorder.resize(GRAPH_AREA.maxX - GRAPH_AREA.minX, GRAPH_AREA.maxY - GRAPH_AREA.minY);
-                            areaBorder.attr({
-                                body: {
-                                    fill: 'none',
-                                    stroke: '#4fc3f7',
-                                    strokeWidth: 3,
-                                    pointerEvents: 'none'
-                                },
-                                label: { text: '', fill: 'none' }
-                            });
-                            areaBorder.addTo(graph);
-                            paper.findViewByModel(areaBorder)?.toBack();
-                        }, 0);
-            // --- Botón para centrar la vista ---
-            $('#center-view-btn').on('click', function() {
-                // Centrar y alejar la vista en el centro del área
-                const targetScale = 0.4;
-                paper.scale(targetScale, targetScale);
-                // Centro del área definida
-                const areaCenterX = (GRAPH_AREA.maxX - GRAPH_AREA.minX) / 2;
-                const areaCenterY = (GRAPH_AREA.maxY - GRAPH_AREA.minY) / 2;
-                const paperRect = paper.el.getBoundingClientRect();
-                const centerX = paperRect.width / 2;
-                const centerY = paperRect.height / 2;
-                // Ajustar translate para centrar el área considerando el nuevo zoom
-                paper.translate(centerX - areaCenterX * targetScale, centerY - areaCenterY * targetScale);
-            });
+        const paper = new joint.dia.Paper({
+            el: document.getElementById('paper'),
+            model: graph,
+            width: '100%', height: '100%',
+            gridSize: 10, drawGrid: { color: '#333', thickness: 1 },
+            background: { color: '#1e1e1e' },
+            cellViewNamespace: namespace,
+            interactive: (cellView) => {
+                if (cellView.model.get('hidden')) return false;
+                return cellView.model.isElement();
+            },
+            async: true,
+            sorting: joint.dia.Paper.sorting.APPROX
+        });
 
-            // --- 1. CONFIGURACIÓN ---
-            const namespace = joint.shapes;
-            const graph = new joint.dia.Graph({}, { cellNamespace: namespace });
+        // =================================================================
+        // 3. PROCESAMIENTO DE DATOS Y CONSTRUCCIÓN
+        // =================================================================
+        
+        const GRAPH_DATA = {{graphData}};
+        const RAW_DATA = [...GRAPH_DATA.nodes, ...GRAPH_DATA.edges];
+        const stackElements = [];
+        
+        let STACK_COLORS = ['#3F8624', '#FF9900', '#3355DA', '#D13212', '#8A2BE2'];
+        const stacks = RAW_DATA.filter(e => e.data.type === 'Stack');
+        const resources = RAW_DATA.filter(e => e.data.type !== 'Stack' && !e.data.source && !e.data.target);
+        window.resources = resources; 
+        const edges = RAW_DATA.filter(e => e.data.source && e.data.target);
 
-            const paper = new joint.dia.Paper({
-                el: document.getElementById('paper'),
-                model: graph,
-                width: '100%', height: '100%',
-                gridSize: 10, drawGrid: { color: '#333', thickness: 1 },
-                background: { color: '#1e1e1e' },
-                cellViewNamespace: namespace,
-                interactive: (cellView) => {
-                    if (cellView.model.get('hidden')) return false;
-                    return cellView.model.isElement();
-                },
-                async: true,
-                sorting: joint.dia.Paper.sorting.APPROX
-            });
+        // --- CONSTRUCCIÓN UI LISTA DE STACKS ---
+        function updateCounter() {
+            const total = stacks.length;
+            const visible = $('.stack-checkbox:checked').length;
+            $('#counter-text').text(`${visible}/${total}`);
+        }
 
-
-
-            // --- 2. DATOS (RAW_DATA) ---
-            // graphData viene como { nodes: [...], edges: [...] }
-            const GRAPH_DATA = {{graphData}};
-            // Unificamos nodos y aristas en un solo array RAW_DATA
-            const RAW_DATA = [
-                ...GRAPH_DATA.nodes,
-                ...GRAPH_DATA.edges
-            ];
-
-            const stackElements = [];
-
-
-            // --- 3. UI LOGIC (RAW_DATA) ---
-            // Extraer stacks y colores para la UI
-            // Colores editables por stack
-            let STACK_COLORS = ['#3F8624', '#FF9900', '#3355DA', '#D13212', '#8A2BE2'];
-            const stacks = RAW_DATA.filter(e => e.data.type === 'Stack');
-            const resources = RAW_DATA.filter(e => e.data.type !== 'Stack' && !e.data.source && !e.data.target);
-                        window.resources = resources;
-            const edges = RAW_DATA.filter(e => e.data.source && e.data.target);
-
-            function updateCounter() {
-                const total = stacks.length;
-                const visible = $('.stack-checkbox:checked').length;
-                $('#counter-text').text(`${visible}/${total}`);
-            }
-
-            const listEl = $('#stack-list');
-            stacks.forEach((data, idx) => {
-                const color = STACK_COLORS[idx % STACK_COLORS.length];
-                const row = $(
-                    `<div class="stack-row" style="justify-content:space-between;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <input type="checkbox" class="stack-checkbox" data-id="${data.data.id}" checked>
-                            <span>${data.data.label}</span>
-                        </div>
-                        <input type="color" class="stack-color-picker" data-idx="${idx}" value="${color}" style="width:22px;height:22px;border:none;background:none;cursor:pointer;">
-                    </div>
-                `);
-                row.on('click', function(e) {
-                    if (e.target.type !== 'checkbox' && e.target.type !== 'color') {
-                        const cb = $(this).find('input[type="checkbox"]');
-                        cb.prop('checked', !cb.prop('checked')).trigger('change');
-                    }
-                });
-                listEl.append(row);
-            });
-
-            // Evento para cambiar color de stack
-            $('.stack-color-picker').on('input', function(e) {
-                const idx = parseInt($(this).data('idx'));
-                const newColor = $(this).val();
-                STACK_COLORS[idx] = newColor;
-                // Actualizar color en el header del stack
-                const stack = stackElements[idx];
-                if (stack) {
-                    stack.attr('header/fill', newColor);
+        const listEl = $('#stack-list');
+        stacks.forEach((data, idx) => {
+            const color = STACK_COLORS[idx % STACK_COLORS.length];
+            const row = $(
+                `<div class="stack-row" style="justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" class="stack-checkbox" data-id="${data.data.id}" checked>
+                    <span>${data.data.label}</span>
+                </div>
+                <input type="color" class="stack-color-picker" data-idx="${idx}" value="${color}" style="width:22px;height:22px;border:none;background:none;cursor:pointer;">
+            </div>
+        `);
+            row.on('click', function (e) {
+                if (e.target.type !== 'checkbox' && e.target.type !== 'color') {
+                    const cb = $(this).find('input[type="checkbox"]');
+                    cb.prop('checked', !cb.prop('checked')).trigger('change');
                 }
-                // (Ya no hay color-dot que actualizar)
-                // Forzar refresco de minimapa
-                window._minimapPreview = window._minimapPreview || null;
             });
+            listEl.append(row);
+        });
+
+        $('.stack-color-picker').on('input', function (e) {
+            const idx = parseInt($(this).data('idx'));
+            const newColor = $(this).val();
+            STACK_COLORS[idx] = newColor;
+            const stack = stackElements[idx];
+            if (stack) {
+                stack.attr('header/fill', newColor);
+            }
+        });
+        updateCounter();
+
+        // --- LOGICA ACORDEON ---
+        $('.ui-section-header').on('click', function() {
+            $(this).toggleClass('active');
+            $(this).next('.ui-section-content').toggleClass('open');
+        });
+
+        // Visibilidad de Stacks
+        $('.stack-checkbox').on('change', function () {
+            const stackId = $(this).data('id');
+            const isVisible = $(this).is(':checked');
+            const stack = stackElements.find(el => el.get('stackName') === stackId);
+            if (stack) {
+                const display = isVisible ? 'block' : 'none';
+                stack.set('hidden', !isVisible);
+                stack.attr('./display', display);
+                stack.getEmbeddedCells().forEach(child => {
+                    child.set('hidden', !isVisible);
+                    child.attr('./display', display);
+                });
+                // Actualizar enlaces
+                const allCells = [stack, ...stack.getEmbeddedCells()];
+                allCells.forEach(cell => {
+                    const links = graph.getConnectedLinks(cell);
+                    links.forEach(link => {
+                        if (!isVisible) {
+                            link.attr('./display', 'none');
+                        } else {
+                            const source = graph.getCell(link.source().id);
+                            const target = graph.getCell(link.target().id);
+                            const sourceVisible = source && !source.get('hidden');
+                            const targetVisible = target && !target.get('hidden');
+                            if (sourceVisible && targetVisible) link.attr('./display', 'block');
+                            else link.attr('./display', 'none');
+                        }
+                    });
+                });
+            }
             updateCounter();
+        });
 
-            // Colapsar el panel de stacks al inicio
-            $('#ui').addClass('collapsed');
+        // --- TOOLTIP ---
+        const tooltip = $('<div id="graph-tooltip"></div>').css({
+            position: 'fixed', pointerEvents: 'none', zIndex: 9999,
+            background: 'rgba(30,30,30,0.97)', color: '#fff',
+            border: '1px solid #4fc3f7', borderRadius: '6px',
+            padding: '8px 14px', fontSize: '13px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)', display: 'none',
+            maxWidth: '320px', whiteSpace: 'pre-line'
+        });
+        $('body').append(tooltip);
 
-            $('#ui-header').on('click', () => $('#ui').toggleClass('collapsed'));
+        function showTooltip(html, x, y) { tooltip.html(html).css({ left: x + 16, top: y + 16, display: 'block' }); }
+        function hideTooltip() { tooltip.hide(); }
 
-            $('.stack-checkbox').on('change', function() {
-                const stackId = $(this).data('id');
-                const isVisible = $(this).is(':checked');
-                const stack = stackElements.find(el => el.get('stackName') === stackId);
-                if (stack) {
-                    const display = isVisible ? 'block' : 'none';
-                    stack.set('hidden', !isVisible);
-                    stack.attr('./display', display);
-                    // Ocultar/mostrar recursos embebidos
-                    stack.getEmbeddedCells().forEach(child => {
-                        child.set('hidden', !isVisible);
-                        child.attr('./display', display);
-                    });
-                    // Ocultar/mostrar todos los enlaces conectados a stack y a sus recursos
-                    const allCells = [stack, ...stack.getEmbeddedCells()];
-                    allCells.forEach(cell => {
-                        const links = graph.getConnectedLinks(cell);
-                        links.forEach(link => {
-                            if (!isVisible) {
-                                link.attr('./display', 'none');
-                            } else {
-                                const source = graph.getCell(link.source().id);
-                                const target = graph.getCell(link.target().id);
-                                const sourceVisible = source && !source.get('hidden');
-                                const targetVisible = target && !target.get('hidden');
-                                if (sourceVisible && targetVisible) {
-                                    link.attr('./display', 'block');
-                                } else {
-                                    link.attr('./display', 'none');
-                                }
-                            }
-                        });
-                    });
-                }
-                updateCounter();
+        paper.on('element:mouseenter', function (cellView, evt) {
+            const model = cellView.model;
+            if (model.get('type') === 'stack') return;
+            let info = '';
+            if (model.attributes.data && model.attributes.data.type) info += `<b>Tipo:</b> ${model.attributes.data.type}`;
+            if (model.attributes.data && model.attributes.data.id) info += `\n<b>ID:</b> ${model.attributes.data.id}`;
+            if (model.attributes.data && model.attributes.data.parent) info += `\n<b>Stack:</b> ${model.attributes.data.parent}`;
+            showTooltip(info, evt.clientX, evt.clientY);
+        });
+        paper.on('element:mousemove', (cellView, evt) => showTooltip(tooltip.html(), evt.clientX, evt.clientY));
+        paper.on('element:mouseleave', hideTooltip);
+
+        paper.on('link:mouseenter', function (linkView, evt) {
+            const model = linkView.model;
+            let info = `<b>Conexión</b>`;
+            const sourceId = model.source() && model.source().id;
+            const targetId = model.target() && model.target().id;
+            let sourceLabel = sourceId, targetLabel = targetId;
+            if (sourceId) { const s = model.graph.getCell(sourceId); if(s && s.attributes.data) sourceLabel = s.attributes.data.label; }
+            if (targetId) { const t = model.graph.getCell(targetId); if(t && t.attributes.data) targetLabel = t.attributes.data.label; }
+            info += `\n<b>Origen:</b> ${sourceLabel}\n<b>Destino:</b> ${targetLabel}`;
+            showTooltip(info, evt.clientX, evt.clientY);
+        });
+        paper.on('link:mousemove', (linkView, evt) => showTooltip(tooltip.html(), evt.clientX, evt.clientY));
+        paper.on('link:mouseleave', hideTooltip);
+
+
+        // --- CONSTRUCCIÓN DEL GRAFO ---
+        const areaCenterX = (GRAPH_AREA.minX + GRAPH_AREA.maxX) / 2;
+        const areaCenterY = (GRAPH_AREA.minY + GRAPH_AREA.maxY) / 2;
+        const stacksPerRow = Math.ceil(Math.sqrt(stacks.length));
+        const STACK_X_SPACING = 480;
+        const STACK_Y_SPACING = 420;
+        const gridWidth = stacksPerRow * STACK_X_SPACING;
+        const gridHeight = Math.ceil(stacks.length / stacksPerRow) * STACK_Y_SPACING;
+        const startX = areaCenterX - gridWidth / 2;
+        let startY = areaCenterY - gridHeight / 2;
+
+        function getResourceColor(type) {
+            window.getResourceColor = getResourceColor;
+            if (!type) return '#333';
+            const compute = ['Function', 'Instance', 'AutoScalingGroup', 'LaunchConfiguration', 'ECSCluster', 'TaskDefinition', 'Service', 'StateMachine', 'BatchJobDefinition', 'BatchJobQueue'];
+            const storage = ['Bucket', 'FileSystem', 'Volume', 'BackupVault', 'StorageLens'];
+            const database = ['Table', 'DBInstance', 'DBCluster', 'DBSubnetGroup', 'GlobalTable', 'ReplicationGroup', 'CacheCluster'];
+            const networking = ['VPC', 'Subnet', 'RouteTable', 'InternetGateway', 'NatGateway', 'SecurityGroup', 'NetworkAcl', 'VPCEndpoint', 'LoadBalancer', 'Listener'];
+            const security = ['Role', 'User', 'Group', 'Policy', 'ManagedPolicy', 'AccessKey', 'Secret', 'Key'];
+            const management = ['Stack', 'Parameter', 'Alarm', 'Dashboard', 'LogGroup', 'LogStream', 'EventRule', 'Trail', 'ConfigRule'];
+            const appIntegration = ['Queue', 'Topic', 'Subscription', 'EventBus', 'Api', 'Connection', 'Integration'];
+            const analytics = ['Stream', 'DeliveryStream', 'Dataset', 'Crawler', 'Job', 'Table', 'WorkGroup'];
+            const t = type.replace(/^AWS::[\w]+::/, '');
+            if (compute.includes(t)) return '#FF9900';
+            if (storage.includes(t)) return '#3F8624';
+            if (database.includes(t)) return '#3355DA';
+            if (networking.includes(t)) return '#8A2BE2';
+            if (security.includes(t)) return '#D13212';
+            if (management.includes(t)) return '#E03088';
+            if (appIntegration.includes(t)) return '#D9A741';
+            if (analytics.includes(t)) return '#8A2BE2';
+            return '#666';
+        }
+
+        stacks.forEach((stackData, i) => {
+            const col = i % stacksPerRow;
+            const row = Math.floor(i / stacksPerRow);
+            const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30;
+            const y = startY + row * STACK_Y_SPACING + Math.random() * 60 - 30;
+            const headerH = 35;
+            const width = 240;
+            const height = 200;
+            const headerColor = STACK_COLORS[i % STACK_COLORS.length];
+
+            const stack = new joint.shapes.standard.HeaderedRectangle();
+            stack.position(x, y);
+            stack.resize(width, height);
+            stack.attr({
+                root: { title: stackData.data.id },
+                header: { fill: headerColor, stroke: '#444', height: headerH },
+                headerText: { text: stackData.data.label, fill: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: 'Segoe UI' },
+                body: { fill: '#252526', stroke: '#555', rx: 8, ry: 8 }
             });
+            stack.set('type', 'stack');
+            stack.set('stackName', stackData.data.id);
+            stack.addTo(graph);
+            stackElements.push(stack);
 
+            const childResources = resources.filter(r => r.data.parent === stackData.data.id);
+            const resWidth = 90, resHeight = 28;
+            const cx = x + width / 2 - resWidth / 2;
+            const cy = y + headerH + (height - 40) / 2 - resHeight / 2;
+            const spiralStep = 18;
+            const spiralAngleStep = Math.PI / 5;
 
-            // --- 4. CONSTRUCCIÓN (RAW_DATA) ---
-                        // --- TOOLTIP ---
-                        // Crear tooltip flotante
-                        const tooltip = $('<div id="graph-tooltip"></div>').css({
-                            position: 'fixed',
-                            pointerEvents: 'none',
-                            zIndex: 9999,
-                            background: 'rgba(30,30,30,0.97)',
-                            color: '#fff',
-                            border: '1px solid #4fc3f7',
-                            borderRadius: '6px',
-                            padding: '8px 14px',
-                            fontSize: '13px',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                            display: 'none',
-                            maxWidth: '320px',
-                            whiteSpace: 'pre-line'
-                        });
-                        $('body').append(tooltip);
-
-                        function showTooltip(html, x, y) {
-                            tooltip.html(html).css({ left: x + 16, top: y + 16, display: 'block' });
-                        }
-                        function hideTooltip() {
-                            tooltip.hide();
-                        }
-
-                        // --- EVENTOS DE TOOLTIP PARA NODOS ---
-                        paper.on('element:mouseenter', function(cellView, evt) {
-                            const model = cellView.model;
-                            // No mostrar tooltip para stacks
-                            if (model.get('type') === 'stack') return;
-                            let info = '';
-                            // Tipo AWS real
-                            if (model.attributes.data && model.attributes.data.type) {
-                                info += `<b>Tipo:</b> ${model.attributes.data.type}`;
-                            }
-                            // ID lógico
-                            if (model.attributes.data && model.attributes.data.id) {
-                                info += `\n<b>ID:</b> ${model.attributes.data.id}`;
-                            }
-                            // Stack (nombre)
-                            if (model.attributes.data && model.attributes.data.parent) {
-                                info += `\n<b>Stack:</b> ${model.attributes.data.parent}`;
-                            }
-                            showTooltip(info, evt.clientX, evt.clientY);
-                        });
-                        paper.on('element:mousemove', function(cellView, evt) {
-                            showTooltip(tooltip.html(), evt.clientX, evt.clientY);
-                        });
-                        paper.on('element:mouseleave', function() {
-                            hideTooltip();
-                        });
-
-                        // --- EVENTOS DE TOOLTIP PARA ENLACES ---
-                        paper.on('link:mouseenter', function(linkView, evt) {
-                            const model = linkView.model;
-                            let info = `<b>Conexión</b>`;
-                            // Buscar los nodos fuente y destino en el grafo
-                            const sourceId = model.source() && model.source().id;
-                            const targetId = model.target() && model.target().id;
-                            let sourceLabel = sourceId;
-                            let targetLabel = targetId;
-                            if (sourceId) {
-                                const sourceCell = model.graph.getCell(sourceId);
-                                if (sourceCell && sourceCell.attributes.data && sourceCell.attributes.data.label) {
-                                    sourceLabel = sourceCell.attributes.data.label;
-                                }
-                            }
-                            if (targetId) {
-                                const targetCell = model.graph.getCell(targetId);
-                                if (targetCell && targetCell.attributes.data && targetCell.attributes.data.label) {
-                                    targetLabel = targetCell.attributes.data.label;
-                                }
-                            }
-                            info += `\n<b>Origen:</b> ${sourceLabel}`;
-                            info += `\n<b>Destino:</b> ${targetLabel}`;
-                            if (model.attributes.data) {
-                                Object.entries(model.attributes.data).forEach(([k, v]) => {
-                                    info += `\n<b>${k}:</b> ${v}`;
-                                });
-                            }
-                            showTooltip(info, evt.clientX, evt.clientY);
-                        });
-                        paper.on('link:mousemove', function(linkView, evt) {
-                            showTooltip(tooltip.html(), evt.clientX, evt.clientY);
-                        });
-                        paper.on('link:mouseleave', function() {
-                            hideTooltip();
-                        });
-            // Calcular el centro del área para colocar los stacks y nodos
-            const areaCenterX = (GRAPH_AREA.maxX - GRAPH_AREA.minX) / 2;
-            const areaCenterY = (GRAPH_AREA.maxY - GRAPH_AREA.minY) / 2;
-            // Ajustar el inicio para que la cuadrícula esté centrada
-            const stacksPerRow = Math.ceil(Math.sqrt(stacks.length));
-            const STACK_X_SPACING = 480;
-            const STACK_Y_SPACING = 420;
-            const gridWidth = stacksPerRow * STACK_X_SPACING;
-            const gridHeight = Math.ceil(stacks.length / stacksPerRow) * STACK_Y_SPACING;
-            const startX = areaCenterX - gridWidth / 2;
-            let startY = areaCenterY - gridHeight / 2;
-
-            stacks.forEach((stackData, i) => {
-                const col = i % stacksPerRow;
-                const row = Math.floor(i / stacksPerRow);
-                const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30;
-                const y = startY + row * STACK_Y_SPACING + Math.random() * 60 - 30;
-                const headerH = 35;
-                const width = 240;
-                const height = 200;
-                const color = '#252526';
-                const headerColor = STACK_COLORS[i % STACK_COLORS.length];
-
-                const stack = new joint.shapes.standard.HeaderedRectangle();
-                stack.position(x, y);
-                stack.resize(width, height);
-                stack.attr({
-                    root: { title: stackData.data.id },
-                    header: { fill: headerColor, stroke: '#444', height: headerH },
-                    headerText: { text: stackData.data.label, fill: '#fff', fontSize: 13, fontWeight: 'bold', fontFamily: 'Segoe UI' },
-                    body: { fill: color, stroke: '#555', rx: 8, ry: 8 }
-                });
-                stack.set('type', 'stack');
-                stack.set('stackName', stackData.data.id);
-                stack.addTo(graph);
-                stackElements.push(stack);
-
-                // Recursos hijos de este stack
-                const childResources = resources.filter(r => r.data.parent === stackData.data.id);
-                // Distribuir recursos de forma aleatoria dentro del stack
-                // Colocación en espiral para evitar apilamiento incluso con muchos nodos
-                const resAreaW = width - 20;
-                const resAreaH = height - 40;
-                const resWidth = 90;
-                const resHeight = 28;
-                const cx = x + width / 2 - resWidth / 2;
-                const cy = y + headerH + (resAreaH / 2) - resHeight / 2;
-                const spiralStep = 18;
-                const spiralAngleStep = Math.PI / 5;
-                // Colores por tipo de recurso AWS
-                function getResourceColor(type) {
-                                    window.getResourceColor = getResourceColor;
-                    if (!type) return '#333';
-                    // Tipos cortos de CDK/CloudFormation agrupados
-                    const compute = [
-                        'Function','Instance','AutoScalingGroup','LaunchConfiguration','ECSCluster','TaskDefinition','Service','StateMachine','BatchJobDefinition','BatchJobQueue'
-                    ];
-                    const storage = [
-                        'Bucket','FileSystem','Volume','BackupVault','StorageLens'
-                    ];
-                    const database = [
-                        'Table','DBInstance','DBCluster','DBSubnetGroup','GlobalTable','ReplicationGroup','CacheCluster'
-                    ];
-                    const networking = [
-                        'VPC','Subnet','RouteTable','InternetGateway','NatGateway','SecurityGroup','NetworkAcl','VPCEndpoint','LoadBalancer','Listener'
-                    ];
-                    const security = [
-                        'Role','User','Group','Policy','ManagedPolicy','AccessKey','Secret','Key'
-                    ];
-                    const management = [
-                        'Stack','Parameter','Alarm','Dashboard','LogGroup','LogStream','EventRule','Trail','ConfigRule'
-                    ];
-                    const appIntegration = [
-                        'Queue','Topic','Subscription','EventBus','Api','Connection','Integration'
-                    ];
-                    const analytics = [
-                        'Stream','DeliveryStream','Dataset','Crawler','Job','Table','WorkGroup'
-                    ];
-                    // Normalizar tipo
-                    const t = type.replace(/^AWS::[\w]+::/, '');
-                    if (compute.includes(t)) return '#FF9900';
-                    if (storage.includes(t)) return '#3F8624';
-                    if (database.includes(t)) return '#3355DA';
-                    if (networking.includes(t)) return '#8A2BE2';
-                    if (security.includes(t)) return '#D13212';
-                    if (management.includes(t)) return '#E03088';
-                    if (appIntegration.includes(t)) return '#D9A741';
-                    if (analytics.includes(t)) return '#8A2BE2';
-                    return '#666';
+            childResources.forEach((res, idx) => {
+                const resNode = new joint.shapes.standard.Rectangle();
+                const angle = idx * spiralAngleStep;
+                const radius = spiralStep * (1 + idx / (2 * Math.PI));
+                resNode.position(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+                resNode.resize(resWidth, resHeight);
+                const resourceColor = getResourceColor(res.data.type);
+                
+                function getBodyAttrs() {
+                    if (window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border') {
+                        return { fill: '#222', stroke: resourceColor, strokeWidth: 3, rx: 5, ry: 5, cursor: 'pointer' };
+                    } else {
+                        return { fill: resourceColor, stroke: '#222', strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' };
+                    }
                 }
-                childResources.forEach((res, idx) => {
-                    const resNode = new joint.shapes.standard.Rectangle();
-                    const angle = idx * spiralAngleStep;
-                    const radius = spiralStep * (1 + idx / (2 * Math.PI));
-                    const rx = cx + Math.cos(angle) * radius;
-                    const ry = cy + Math.sin(angle) * radius;
-                    resNode.position(rx, ry);
-                    resNode.resize(resWidth, resHeight);
-                    const resourceColor = getResourceColor(res.data.type);
-                    // Modo de color: relleno o borde (siempre usar el valor actual de window.__USER_CONFIG__)
-                    function getBodyAttrs() {
-                        if (window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border') {
-                            return { fill: '#222', stroke: resourceColor, strokeWidth: 3, rx: 5, ry: 5, cursor: 'pointer' };
-                        } else {
-                            return { fill: resourceColor, stroke: '#222', strokeWidth: 1, rx: 5, ry: 5, cursor: 'pointer' };
+                resNode.attr({
+                    body: getBodyAttrs(),
+                    label: { text: res.data.label, fill: '#fff', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
+                });
+                resNode.set('data', res.data);
+                stack.embed(resNode);
+                resNode.addTo(graph);
+                res._cell = resNode;
+            });
+            stack.fitEmbeds({ padding: 25 });
+        });
+
+        edges.forEach(edge => {
+            let sourceNode = resources.find(r => r.data.id === edge.data.source)?._cell;
+            let targetNode = resources.find(r => r.data.id === edge.data.target)?._cell;
+            if (!sourceNode) sourceNode = stacks.find(s => s.data.id === edge.data.source)?._cell;
+            if (!targetNode) targetNode = stacks.find(s => s.data.id === edge.data.target)?._cell;
+            if (sourceNode && targetNode) {
+                const link = new joint.shapes.standard.Link();
+                link.source(sourceNode);
+                link.target(targetNode);
+                link.attr({ line: { stroke: '#666', strokeWidth: 1.5, targetMarker: { type: 'path', d: 'M 8 -4 0 0 8 4 z' } } });
+                link.connector('rounded');
+                link.addTo(graph);
+            }
+        });
+
+        // Borde Visual del Área
+        const areaBorder = new joint.shapes.standard.Rectangle();
+        areaBorder.position(GRAPH_AREA.minX, GRAPH_AREA.minY);
+        areaBorder.resize(GRAPH_AREA.maxX - GRAPH_AREA.minX, GRAPH_AREA.maxY - GRAPH_AREA.minY);
+        areaBorder.attr({
+            body: { fill: 'none', stroke: '#4fc3f7', strokeWidth: 3, pointerEvents: 'none' },
+            label: { text: '', fill: 'none' }
+        });
+        areaBorder.addTo(graph);
+        setTimeout(() => { areaBorder.toBack(); }, 100);
+
+
+        // =================================================================
+        // 4. INTERACCIONES, CÁMARA Y FÍSICAS (Sin cambios de lógica)
+        // =================================================================
+
+        let draggedElementId = null;
+        let draggingSingleNodeStack = null;
+        let dragStartPointer = null;
+        let dragStartStackPos = null;
+
+        paper.on('element:pointerdown', (ev, x, y) => {
+            const model = ev.model;
+            const parentStack = stackElements.find(stack => stack.getEmbeddedCells().length === 1 && stack.getEmbeddedCells()[0].id === model.id);
+            if (parentStack && model !== parentStack) {
+                draggingSingleNodeStack = parentStack;
+                dragStartPointer = { x, y };
+                const pos = parentStack.position();
+                dragStartStackPos = { x: pos.x, y: pos.y };
+                draggedElementId = null;
+            } else {
+                draggedElementId = model.id;
+                draggingSingleNodeStack = null;
+            }
+        });
+
+        paper.on('element:pointermove', (ev, x, y) => {
+            if (draggingSingleNodeStack && dragStartPointer && dragStartStackPos) {
+                const dx = x - dragStartPointer.x;
+                const dy = y - dragStartPointer.y;
+                let newX = dragStartStackPos.x + dx;
+                let newY = dragStartStackPos.y + dy;
+                const bbox = draggingSingleNodeStack.getBBox();
+                const clamped = clampPosition(newX, newY, bbox.width, bbox.height);
+                draggingSingleNodeStack.position(clamped.x, clamped.y);
+                draggingSingleNodeStack.fitEmbeds({ padding: 25 });
+            } else if (draggedElementId) {
+                const model = ev.model;
+                const bbox = model.getBBox();
+                const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                model.position(clamped.x, clamped.y);
+            }
+        });
+
+        paper.on('element:pointerup', () => {
+            draggedElementId = null;
+            draggingSingleNodeStack = null;
+            dragStartPointer = null;
+            dragStartStackPos = null;
+        });
+
+        // --- SISTEMA DE FÍSICAS (CÓDIGO EXACTO PROVISTO) ---
+        function physicsLoop() {
+            resolveInternalPhysics();
+            resolveStackCollisions();
+            requestAnimationFrame(physicsLoop);
+        }
+
+        function resolveInternalPhysics() {
+            let anyMoved = false;
+            // AJUSTES DE FÍSICA ORIGINALES
+            const REPULSION_DIST = 450;
+            const REPULSION_STR = 80.0;
+            const ATTRACTION_DIST = 130;
+            const ATTRACTION_STR = 0.02;
+            const CENTER_PULL = 0.035;
+            const COLLISION_PADDING = 30;
+            const DAMPING = 0.5;
+            const STOP_THRESHOLD = 0.6;
+            const MAX_SPEED = 15;
+
+            stackElements.forEach(stack => {
+                if (stack.get('hidden')) return;
+                const children = stack.getEmbeddedCells();
+                if (children.length === 0) return;
+
+                let cx = 0, cy = 0;
+                children.forEach(c => { const pt = c.getBBox().center(); cx += pt.x; cy += pt.y; });
+                cx /= children.length; cy /= children.length;
+
+                let stackMoved = false;
+
+                for (let i = 0; i < children.length; i++) {
+                    const nodeA = children[i];
+                    if (nodeA.id === draggedElementId) continue;
+                    let fx = 0, fy = 0;
+                    const aCenter = nodeA.getBBox().center();
+
+                    for (let j = 0; j < children.length; j++) {
+                        if (i === j) continue;
+                        const nodeB = children[j];
+                        const bCenter = nodeB.getBBox().center();
+                        let dx = aCenter.x - bCenter.x;
+                        let dy = aCenter.y - bCenter.y;
+                        let distSq = dx * dx + dy * dy;
+                        let dist = Math.sqrt(distSq) || 0.1;
+
+                        if (dist < REPULSION_DIST) {
+                            const factor = (1 - dist / REPULSION_DIST);
+                            let force = factor * factor * REPULSION_STR;
+                            fx += (dx / dist) * force;
+                            fy += (dy / dist) * force;
                         }
                     }
-                    resNode.attr({
-                        body: getBodyAttrs(),
-                        label: { text: res.data.label, fill: '#fff', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
-                    });
-                    resNode.set('data', res.data);
-                    stack.embed(resNode);
-                    resNode.addTo(graph);
-                    res._cell = resNode;
-                });
-                stack.fitEmbeds({ padding: 25 });
-                stack._cell = stack;
-            });
 
-            // Crear enlaces
-            edges.forEach(edge => {
-                // Buscar nodos fuente y destino
-                let sourceNode = null;
-                let targetNode = null;
-                // Buscar en recursos
-                sourceNode = resources.find(r => r.data.id === edge.data.source)?._cell;
-                targetNode = resources.find(r => r.data.id === edge.data.target)?._cell;
-                // Si no está en recursos, buscar en stacks
-                if (!sourceNode) sourceNode = stacks.find(s => s.data.id === edge.data.source)?._cell;
-                if (!targetNode) targetNode = stacks.find(s => s.data.id === edge.data.target)?._cell;
-                if (sourceNode && targetNode) {
-                    const link = new joint.shapes.standard.Link();
-                    link.source(sourceNode);
-                    link.target(targetNode);
-                    link.attr({
-                        line: { stroke: '#666', strokeWidth: 1.5, targetMarker: { type: 'path', d: 'M 8 -4 0 0 8 4 z' } }
-                    });
-                    link.connector('rounded');
-                    link.addTo(graph);
-                }
-            });
+                    const connectedLinks = graph.getConnectedLinks(nodeA);
+                    connectedLinks.forEach(link => {
+                        const sourceId = link.source().id;
+                        const targetId = link.target().id;
+                        let otherNode = null;
+                        if (sourceId === nodeA.id && targetId) otherNode = graph.getCell(targetId);
+                        else if (targetId === nodeA.id && sourceId) otherNode = graph.getCell(sourceId);
 
-            // --- 5. FÍSICA SIN VIBRACIÓN ---
-            
+                        if (otherNode && children.includes(otherNode)) {
+                            const otherCenter = otherNode.getBBox().center();
+                            let dx = otherCenter.x - aCenter.x;
+                            let dy = otherCenter.y - aCenter.y;
+                            let dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
 
-            let draggedElementId = null;
-            let draggingSingleNodeStack = null;
-            let dragStartPointer = null;
-            let dragStartStackPos = null;
-
-            paper.on('element:pointerdown', (ev, x, y) => {
-                const model = ev.model;
-                // ¿Es un recurso embebido en un stack de un solo nodo?
-                const parentStack = stackElements.find(stack => stack.getEmbeddedCells().length === 1 && stack.getEmbeddedCells()[0].id === model.id);
-                if (parentStack && model !== parentStack) {
-                    // Iniciar drag especial: mover stack completo
-                    draggingSingleNodeStack = parentStack;
-                    dragStartPointer = { x, y };
-                    const pos = parentStack.position();
-                    dragStartStackPos = { x: pos.x, y: pos.y };
-                    draggedElementId = null; // No drag normal
-                } else {
-                    draggedElementId = model.id;
-                    draggingSingleNodeStack = null;
-                }
-            });
-
-            paper.on('element:pointermove', (ev, x, y) => {
-                if (draggingSingleNodeStack && dragStartPointer && dragStartStackPos) {
-                    // Mover stack completo
-                    const dx = x - dragStartPointer.x;
-                    const dy = y - dragStartPointer.y;
-                    let newX = dragStartStackPos.x + dx;
-                    let newY = dragStartStackPos.y + dy;
-                    const bbox = draggingSingleNodeStack.getBBox();
-                    const clamped = clampPosition(newX, newY, bbox.width, bbox.height);
-                    draggingSingleNodeStack.position(clamped.x, clamped.y);
-                    draggingSingleNodeStack.fitEmbeds({ padding: 25 });
-                } else if (draggedElementId) {
-                    // Clamp dragged node position
-                    const model = ev.model;
-                    const bbox = model.getBBox();
-                    const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
-                    model.position(clamped.x, clamped.y);
-                }
-            });
-
-            paper.on('element:pointerup', () => {
-                draggedElementId = null;
-                draggingSingleNodeStack = null;
-                dragStartPointer = null;
-                dragStartStackPos = null;
-            });
-
-
-            // --- Sistema de enfriamiento simple: solo detener si no hay movimiento ---
-            function physicsLoop() {
-                resolveInternalPhysics();
-                resolveStackCollisions();
-                requestAnimationFrame(physicsLoop);
-            }
-
-            function resolveInternalPhysics() {
-                let anyMoved = false;
-                
-                // --- AJUSTES DE FÍSICA ---
-                // Ajustados para maximizar el desenredado (Layout Planar) sin perder cohesión
-                const REPULSION_DIST = 450;    //200;    // Distancia de influencia de repulsión Rango muy alto para que los nodos se perciban desde lejos
-                const REPULSION_STR = 80.0;    //25.0;    // Fuerza de repulsión (ajustada para estabilidad) Fuerza de repulsión muy fuerte para abrir el grafo
-                const ATTRACTION_DIST = 130;   //100;   // Longitud óptima de enlaces Enlaces más largos para dar espacio a que se crucen menos
-                const ATTRACTION_STR = 0.02;   //0.05;   // Fuerza del enlace (muelle) Atracción de enlaces suave para no forzar nudos
-                const CENTER_PULL = 0.035;     //0.06;      // Cohesión al centro (MÁS ALTA para seguimiento rápido) Cohesión equilibrada: sigue rápido pero permite expansión
-                const COLLISION_PADDING = 30;  //30;  // Espacio mínimo garantizado entre nodos Espaciado físico
-                const DAMPING = 0.5;           //0.4;           // Amortiguación fuerte (0.0 muy lento -> 1.0 sin fricción) Menor momentum para evitar orbitar (más estable)
-                const STOP_THRESHOLD = 0.6;    //0.8;    // Umbral para detener vibración
-                const MAX_SPEED = 15;          //12;       Permitir movimientos rápidos para desenredarse
-                
-                stackElements.forEach(stack => {
-                    if (stack.get('hidden')) return;
-
-                    const children = stack.getEmbeddedCells();
-                    if (children.length === 0) return;
-
-                    // Calcular centro de masa actual
-                    let cx = 0, cy = 0;
-                    children.forEach(c => { const pt = c.getBBox().center(); cx += pt.x; cy += pt.y; });
-                    cx /= children.length; cy /= children.length;
-
-                    let stackMoved = false;
-
-                    // --- 1. FUERZAS SUAVES (Layout) ---
-                    for (let i = 0; i < children.length; i++) {
-                        const nodeA = children[i];
-                        if (nodeA.id === draggedElementId) continue;
-                        
-                        let fx = 0, fy = 0;
-                        const aCenter = nodeA.getBBox().center();
-
-                        // A. Repulsión (Muy fuerte para desenredar)
-                        for (let j = 0; j < children.length; j++) {
-                            if (i === j) continue;
-                            const nodeB = children[j];
-                            const bCenter = nodeB.getBBox().center();
-                            let dx = aCenter.x - bCenter.x;
-                            let dy = aCenter.y - bCenter.y;
-                            let distSq = dx*dx + dy*dy;
-                            let dist = Math.sqrt(distSq) || 0.1;
-                            
-                            if (dist < REPULSION_DIST) {
-                                // Usamos una fuerza cuadrática invertida modificada para "empujar duro" al principio
-                                // pero mantener influencia lejos.
-                                const factor = (1 - dist / REPULSION_DIST);
-                                let force = factor * factor * REPULSION_STR;
+                            if (dist > ATTRACTION_DIST) {
+                                const force = (dist - ATTRACTION_DIST) * ATTRACTION_STR;
                                 fx += (dx / dist) * force;
                                 fy += (dy / dist) * force;
                             }
                         }
+                    });
 
-                        // B. Atracción de Enlaces (edges)
-                        const connectedLinks = graph.getConnectedLinks(nodeA);
-                        connectedLinks.forEach(link => {
-                            const sourceId = link.source().id;
-                            const targetId = link.target().id;
-                            let otherNode = null;
-                            if (sourceId === nodeA.id && targetId) otherNode = graph.getCell(targetId);
-                            else if (targetId === nodeA.id && sourceId) otherNode = graph.getCell(sourceId);
-                            
-                            if (otherNode && children.includes(otherNode)) {
-                                const otherCenter = otherNode.getBBox().center();
-                                let dx = otherCenter.x - aCenter.x;
-                                let dy = otherCenter.y - aCenter.y;
-                                let dist = Math.sqrt(dx*dx + dy*dy) || 0.1;
-                                
-                                if (dist > ATTRACTION_DIST) { 
-                                    const force = (dist - ATTRACTION_DIST) * ATTRACTION_STR;
-                                    fx += (dx / dist) * force;
-                                    fy += (dy / dist) * force;
-                                }
-                            }
-                        });
+                    fx += (cx - aCenter.x) * CENTER_PULL;
+                    fy += (cy - aCenter.y) * CENTER_PULL;
+                    fx *= DAMPING; fy *= DAMPING;
+                    const speed = Math.sqrt(fx * fx + fy * fy);
+                    if (speed > MAX_SPEED) { fx = (fx / speed) * MAX_SPEED; fy = (fy / speed) * MAX_SPEED; }
+                    if (Math.abs(fx) < STOP_THRESHOLD) fx = 0;
+                    if (Math.abs(fy) < STOP_THRESHOLD) fy = 0;
 
-                        // C. Cohesión al Centro (Seguimiento Stack)
-                        fx += (cx - aCenter.x) * CENTER_PULL;
-                        fy += (cy - aCenter.y) * CENTER_PULL;
+                    if (fx !== 0 || fy !== 0) {
+                        nodeA.translate(fx, fy);
+                        const bbox = nodeA.getBBox();
+                        const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                        nodeA.position(clamped.x, clamped.y);
+                        stackMoved = true;
+                    }
+                }
 
-                        // Aplicar Amortiguación
-                        fx *= DAMPING;
-                        fy *= DAMPING;
-
-                        // Limitar Velocidad
-                        const speed = Math.sqrt(fx*fx + fy*fy);
-                        if (speed > MAX_SPEED) {
-                            fx = (fx / speed) * MAX_SPEED;
-                            fy = (fy / speed) * MAX_SPEED;
-                        }
-
-                        // Deadzone 
-                        if (Math.abs(fx) < STOP_THRESHOLD) fx = 0;
-                        if (Math.abs(fy) < STOP_THRESHOLD) fy = 0;
-
-                        if (fx !== 0 || fy !== 0) {
-                            nodeA.translate(fx, fy);
-                            // Clamp position after translation
-                            const bbox = nodeA.getBBox();
-                            const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
-                            nodeA.position(clamped.x, clamped.y);
+                const pad = COLLISION_PADDING;
+                for (let i = 0; i < children.length; i++) {
+                    const childA = children[i];
+                    for (let j = i + 1; j < children.length; j++) {
+                        const childB = children[j];
+                        const bA = childA.getBBox();
+                        const bB = childB.getBBox();
+                        if (bA.x < bB.x + bB.width + pad && bA.x + bA.width + pad > bB.x &&
+                            bA.y < bB.y + bB.height + pad && bA.y + bA.height + pad > bB.y) {
+                            const cA = bA.center();
+                            const cB = bB.center();
+                            let dx = cA.x - cB.x; let dy = cA.y - cB.y;
+                            if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) { dx = 1; dy = 0; }
+                            const penX = (bA.width / 2 + bB.width / 2 + pad) - Math.abs(dx);
+                            const penY = (bA.height / 2 + bB.height / 2 + pad) - Math.abs(dy);
+                            let mx = 0, my = 0;
+                            if (penX < penY) mx = penX * (dx > 0 ? 1 : -1); else my = penY * (dy > 0 ? 1 : -1);
+                            const aDrag = childA.id === draggedElementId;
+                            const bDrag = childB.id === draggedElementId;
+                            if (aDrag) childB.translate(-mx, -my);
+                            else if (bDrag) childA.translate(mx, my);
+                            else { childA.translate(mx * 0.5, my * 0.5); childB.translate(-mx * 0.5, -my * 0.5); }
                             stackMoved = true;
                         }
                     }
+                }
+                if (stackMoved) {
+                    stack.fitEmbeds({ padding: 30 });
+                    anyMoved = true;
+                }
+            });
 
-                    // --- 2. COLISIONES FÍSICAS (Hard Constraints) ---
-                    // Esto asegura que no queden pegados visualmente
-                    const pad = COLLISION_PADDING;
-                    for (let i = 0; i < children.length; i++) {
-                        const childA = children[i];
-                        for (let j = i + 1; j < children.length; j++) {
-                            const childB = children[j];
-                            const bA = childA.getBBox();
-                            const bB = childB.getBBox();
-                            
-                            // Check solapamiento con padding extra
-                            if (bA.x < bB.x + bB.width + pad && 
-                                bA.x + bA.width + pad > bB.x &&
-                                bA.y < bB.y + bB.height + pad && 
-                                bA.y + bA.height + pad > bB.y) {
-                                
-                                const cA = bA.center();
-                                const cB = bB.center();
-                                let dx = cA.x - cB.x;
-                                let dy = cA.y - cB.y;
-                                if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) { dx = 1; dy = 0; }
+            stackElements.forEach(stack => {
+                if (stack.get('hidden')) return;
+                const bbox = stack.getBBox();
+                stack.getEmbeddedCells().forEach(child => {
+                    const childBox = child.getBBox();
+                    let relX = childBox.x - bbox.x; let relY = childBox.y - bbox.y;
+                    relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
+                    relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
+                    child.position(bbox.x + relX, bbox.y + relY);
+                });
+            });
+            return anyMoved;
+        }
 
-                                const penX = (bA.width/2 + bB.width/2 + pad) - Math.abs(dx);
-                                const penY = (bA.height/2 + bB.height/2 + pad) - Math.abs(dy);
+        function resolveStackCollisions() {
+            stackElements.forEach(stack => {
+                if (stack.get('hidden')) return;
+                const bbox = stack.getBBox();
+                let newX = bbox.x; let newY = bbox.y;
+                const borderPad = 10;
+                newX = Math.max(GRAPH_AREA.minX + borderPad, Math.min(newX, GRAPH_AREA.maxX - borderPad - bbox.width));
+                newY = Math.max(GRAPH_AREA.minY + borderPad, Math.min(newY, GRAPH_AREA.maxY - borderPad - bbox.height));
+                if (newX !== bbox.x || newY !== bbox.y) stack.position(newX, newY);
+                const newBox = stack.getBBox();
+                stack.getEmbeddedCells().forEach(child => {
+                    const childBox = child.getBBox();
+                    let relX = childBox.x - newBox.x; let relY = childBox.y - newBox.y;
+                    relX = Math.max(0, Math.min(relX, newBox.width - childBox.width));
+                    relY = Math.max(0, Math.min(relY, newBox.height - childBox.height));
+                    child.position(newBox.x + relX, newBox.y + relY);
+                });
+            });
 
-                                let mx = 0, my = 0;
-                                if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
-                                else my = penY * (dy > 0 ? 1 : -1);
+            const padding = 15;
+            for (let i = 0; i < stackElements.length; i++) {
+                const A = stackElements[i];
+                if (A.get('hidden')) continue;
+                for (let j = i + 1; j < stackElements.length; j++) {
+                    const B = stackElements[j];
+                    if (B.get('hidden')) continue;
+                    const bA = A.getBBox(); const bB = B.getBBox();
+                    if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
+                        bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
+                        const cA = bA.center(); const cB = bB.center();
+                        let dx = cA.x - cB.x; let dy = cA.y - cB.y;
+                        if (dx === 0 && dy === 0) dx = 1;
+                        const penX = (bA.width / 2 + bB.width / 2 + padding) - Math.abs(dx);
+                        const penY = (bA.height / 2 + bB.height / 2 + padding) - Math.abs(dy);
+                        let mx = 0, my = 0;
+                        if (penX < penY) mx = penX * (dx > 0 ? 1 : -1); else my = penY * (dy > 0 ? 1 : -1);
+                        
+                        // ANTI-VIBRACIÓN STACKS
+                        if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
 
-                                const aDrag = childA.id === draggedElementId;
-                                const bDrag = childB.id === draggedElementId;
-                                
-                                // Resolución rígida (separación inmediata)
-                                if (aDrag) {
-                                    childB.translate(-mx, -my);
-                                } else if (bDrag) {
-                                    childA.translate(mx, my);
-                                } else {
-                                    childA.translate(mx * 0.5, my * 0.5);
-                                    childB.translate(-mx * 0.5, -my * 0.5);
-                                }
-                                stackMoved = true;
-                            }
+                        const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
+                        const bDrag = (B.id === draggedElementId || B.getEmbeddedCells().some(c => c.id === draggedElementId));
+                        const f = 0.8;
+                        function clampStackAndChildren(stack) {
+                            const bbox = stack.getBBox();
+                            const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
+                            stack.position(clamped.x, clamped.y);
+                            stack.getEmbeddedCells().forEach(child => {
+                                const childBox = child.getBBox();
+                                let relX = childBox.x - bbox.x; let relY = childBox.y - bbox.y;
+                                relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
+                                relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
+                                child.position(clamped.x + relX, clamped.y + relY);
+                            });
                         }
-                    }
-
-                    if (stackMoved) {
-                        stack.fitEmbeds({ padding: 30 });
-                        anyMoved = true;
-                    }
-                });
-                // Clamp all embedded nodes inside their parent stack after physics
-                stackElements.forEach(stack => {
-                    if (stack.get('hidden')) return;
-                    const bbox = stack.getBBox();
-                    stack.getEmbeddedCells().forEach(child => {
-                        const childBox = child.getBBox();
-                        // Calculate relative position inside stack
-                        let relX = childBox.x - bbox.x;
-                        let relY = childBox.y - bbox.y;
-                        relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
-                        relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
-                        child.position(bbox.x + relX, bbox.y + relY);
-                    });
-                });
-                return anyMoved;
-            }
-
-            function resolveStackCollisions() {
-                                // --- COLISIÓN RÍGIDA DE STACKS CON EL BORDE DEL ÁREA ---
-                                // 1. Clamp stacks to area border (rigid, no deformation)
-                                stackElements.forEach(stack => {
-                                    if (stack.get('hidden')) return;
-                                    const bbox = stack.getBBox();
-                                    let newX = bbox.x;
-                                    let newY = bbox.y;
-                                    const borderPad = 10;
-                                    // Clamp stack position so it cannot cross the border
-                                    newX = Math.max(GRAPH_AREA.minX + borderPad, Math.min(newX, GRAPH_AREA.maxX - borderPad - bbox.width));
-                                    newY = Math.max(GRAPH_AREA.minY + borderPad, Math.min(newY, GRAPH_AREA.maxY - borderPad - bbox.height));
-                                    if (newX !== bbox.x || newY !== bbox.y) {
-                                        stack.position(newX, newY);
-                                    }
-                                    // Clamp all embedded nodes inside the stack after border collision
-                                    const newBox = stack.getBBox();
-                                    stack.getEmbeddedCells().forEach(child => {
-                                        const childBox = child.getBBox();
-                                        let relX = childBox.x - newBox.x;
-                                        let relY = childBox.y - newBox.y;
-                                        relX = Math.max(0, Math.min(relX, newBox.width - childBox.width));
-                                        relY = Math.max(0, Math.min(relY, newBox.height - childBox.height));
-                                        child.position(newBox.x + relX, newBox.y + relY);
-                                    });
-                                });
-
-                                // 2. Enforce stack-to-stack collision after border clamping
-                                for (let i = 0; i < stackElements.length; i++) {
-                                    const A = stackElements[i];
-                                    if (A.get('hidden')) continue;
-                                    for (let j = i + 1; j < stackElements.length; j++) {
-                                        const B = stackElements[j];
-                                        if (B.get('hidden')) continue;
-                                        const bA = A.getBBox();
-                                        const bB = B.getBBox();
-                                        const padding = 15;
-                                        if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
-                                            bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
-                                            const cA = bA.center();
-                                            const cB = bB.center();
-                                            let dx = cA.x - cB.x;
-                                            let dy = cA.y - cB.y;
-                                            if (dx === 0 && dy === 0) dx = 1;
-                                            const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
-                                            const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
-                                            let mx = 0, my = 0;
-                                            if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
-                                            else my = penY * (dy > 0 ? 1 : -1);
-                                            if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
-                                            const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
-                                            const bDrag = (B.id === draggedElementId || B.getEmbeddedCells().some(c => c.id === draggedElementId));
-                                            const f = 0.8;
-                                            function clampStackAndChildren(stack) {
-                                                const bbox = stack.getBBox();
-                                                const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
-                                                stack.position(clamped.x, clamped.y);
-                                                stack.getEmbeddedCells().forEach(child => {
-                                                    const childBox = child.getBBox();
-                                                    let relX = childBox.x - clamped.x;
-                                                    let relY = childBox.y - clamped.y;
-                                                    relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
-                                                    relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
-                                                    child.position(clamped.x + relX, clamped.y + relY);
-                                                });
-                                            }
-                                            if (aDrag) {
-                                                B.translate(-mx * f, -my * f);
-                                                clampStackAndChildren(B);
-                                            } else if (bDrag) {
-                                                A.translate(mx * f, my * f);
-                                                clampStackAndChildren(A);
-                                            } else {
-                                                A.translate(mx * 0.5 * f, my * 0.5 * f);
-                                                B.translate(-mx * 0.5 * f, -my * 0.5 * f);
-                                                clampStackAndChildren(A);
-                                                clampStackAndChildren(B);
-                                            }
-                                        }
-                                    }
-                                }
-                const padding = 15; // Padding generoso para evitar contacto visual
-
-                for (let i = 0; i < stackElements.length; i++) {
-                    const A = stackElements[i];
-                    if (A.get('hidden')) continue;
-
-                    for (let j = i + 1; j < stackElements.length; j++) {
-                        const B = stackElements[j];
-                        if (B.get('hidden')) continue;
-
-                        const bA = A.getBBox();
-                        const bB = B.getBBox();
-
-                        if (bA.x < bB.x + bB.width + padding && bA.x + bA.width + padding > bB.x &&
-                            bA.y < bB.y + bB.height + padding && bA.y + bA.height + padding > bB.y) {
-                            const cA = bA.center();
-                            const cB = bB.center();
-                            let dx = cA.x - cB.x;
-                            let dy = cA.y - cB.y;
-                            if (dx === 0 && dy === 0) dx = 1;
-
-                            const penX = (bA.width/2 + bB.width/2 + padding) - Math.abs(dx);
-                            const penY = (bA.height/2 + bB.height/2 + padding) - Math.abs(dy);
-
-                            let mx = 0, my = 0;
-                            if (penX < penY) mx = penX * (dx > 0 ? 1 : -1);
-                            else my = penY * (dy > 0 ? 1 : -1);
-
-                            // ANTI-VIBRACIÓN STACKS
-                            if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
-
-                            const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
-                            const bDrag = (B.id === draggedElementId || B.getEmbeddedCells().some(c => c.id === draggedElementId));
-
-                            const f = 0.8;
-
-                            function clampStackAndChildren(stack) {
-                                const bbox = stack.getBBox();
-                                const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
-                                stack.position(clamped.x, clamped.y);
-                                // Clamp all embedded nodes inside the stack
-                                stack.getEmbeddedCells().forEach(child => {
-                                    const childBox = child.getBBox();
-                                    // Calculate relative position inside stack
-                                    let relX = childBox.x - bbox.x;
-                                    let relY = childBox.y - bbox.y;
-                                    // Clamp child so it stays inside stack
-                                    relX = Math.max(0, Math.min(relX, bbox.width - childBox.width));
-                                    relY = Math.max(0, Math.min(relY, bbox.height - childBox.height));
-                                    child.position(clamped.x + relX, clamped.y + relY);
-                                });
-                            }
-
-                            if (aDrag) {
-                                B.translate(-mx * f, -my * f);
-                                clampStackAndChildren(B);
-                            } else if (bDrag) {
-                                A.translate(mx * f, my * f);
-                                clampStackAndChildren(A);
-                            } else {
-                                A.translate(mx * 0.5 * f, my * 0.5 * f);
-                                B.translate(-mx * 0.5 * f, -my * 0.5 * f);
-                                clampStackAndChildren(A);
-                                clampStackAndChildren(B);
-                            }
+                        if (aDrag) { B.translate(-mx * f, -my * f); clampStackAndChildren(B); }
+                        else if (bDrag) { A.translate(mx * f, my * f); clampStackAndChildren(A); }
+                        else {
+                            A.translate(mx * 0.5 * f, my * 0.5 * f);
+                            B.translate(-mx * 0.5 * f, -my * 0.5 * f);
+                            clampStackAndChildren(A); clampStackAndChildren(B);
                         }
                     }
                 }
             }
+        }
+        
+        // Iniciar Físicas
+        physicsLoop();
 
-            requestAnimationFrame(physicsLoop);
 
+        // --- CÁMARA & ZOOM ---
+        const zoomSpeed = 0.1;
+        paper.el.addEventListener('wheel', function (e) {
+            if (e.ctrlKey) return;
+            e.preventDefault();
+            const rect = paper.el.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const delta = e.deltaY < 0 ? 1 : -1;
+            const oldScale = paper.scale().sx;
+            const newScale = oldScale + (delta * zoomSpeed);
+            if (newScale < 0.1 || newScale > 4) return;
+            const tr = paper.translate();
+            const logicalX = (x - tr.tx) / oldScale;
+            const logicalY = (y - tr.ty) / oldScale;
+            paper.scale(newScale, newScale);
+            const newScreenX = logicalX * newScale + tr.tx;
+            const newScreenY = logicalY * newScale + tr.ty;
+            const dx = x - newScreenX; const dy = y - newScreenY;
+            paper.translate(tr.tx + dx, tr.ty + dy);
+        }, { passive: false });
 
-            // --- 6. CÁMARA ---
-            const zoomSpeed = 0.1;
-            // Permitir zoom en cualquier parte del paper (fondo, stack o nodo)
-            paper.el.addEventListener('wheel', function(e) {
-                // Solo si Ctrl no está presionado (para no interferir con zoom del navegador)
-                if (e.ctrlKey) return;
-                e.preventDefault();
-                // Obtener posición relativa al paper
-                const rect = paper.el.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                // Delta: dirección del scroll
-                const delta = e.deltaY < 0 ? 1 : -1;
-                const oldScale = paper.scale().sx;
-                const newScale = oldScale + (delta * zoomSpeed);
-                if (newScale < 0.1 || newScale > 4) return;
-                // Calcular el punto lógico bajo el cursor antes del zoom
-                const tr = paper.translate();
-                const logicalX = (x - tr.tx) / oldScale;
-                const logicalY = (y - tr.ty) / oldScale;
-                // Aplicar el nuevo zoom
-                paper.scale(newScale, newScale);
-                // Calcular nueva posición de ese punto bajo el nuevo zoom
-                const newScreenX = logicalX * newScale + tr.tx;
-                const newScreenY = logicalY * newScale + tr.ty;
-                // Ajustar translate para que el punto bajo el cursor permanezca centrado
-                const dx = x - newScreenX;
-                const dy = y - newScreenY;
-                paper.translate(tr.tx + dx, tr.ty + dy);
-            }, { passive: false });
-
-            let panning = false, panStart = {x:0, y:0};
-            paper.on('blank:pointerdown', (e) => { panning=true; panStart={x:e.clientX, y:e.clientY}; $('#paper').addClass('panning'); });
-            $(document).on('mousemove', (e) => {
-                if(!panning) return;
-                const dx = e.clientX - panStart.x;
-                const dy = e.clientY - panStart.y;
-                panStart = {x:e.clientX, y:e.clientY};
-                const tr = paper.translate();
-                paper.translate(tr.tx + dx, tr.ty + dy);
-            });
-            $(document).on('mouseup', () => { panning=false; $('#paper').removeClass('panning'); });
-
+        let panning = false, panStart = { x: 0, y: 0 };
+        paper.on('blank:pointerdown', (e) => { panning = true; panStart = { x: e.clientX, y: e.clientY }; $('#paper').addClass('panning'); });
+        $(document).on('mousemove', (e) => {
+            if (!panning) return;
+            const dx = e.clientX - panStart.x;
+            const dy = e.clientY - panStart.y;
+            panStart = { x: e.clientX, y: e.clientY };
+            const tr = paper.translate();
+            paper.translate(tr.tx + dx, tr.ty + dy);
         });
-    </script>
-           // --- CONFIGURACIÓN ---
-           // Estado de configuración inicial desde la extensión
-           // window.__USER_CONFIG__ y window.__GRAPH_DATA__ deben ser inyectados como JSON válidos por la extensión
+        $(document).on('mouseup', () => { panning = false; $('#paper').removeClass('panning'); });
+
+
+        // =================================================================
+        // 5. BOTONES DE ACCIÓN (Centrar y Exportar)
+        // =================================================================
+        
+        // --- Centrar Vista ---
+        $('#center-view-btn').on('click', function () {
+            const targetScale = 0.4;
+            paper.scale(targetScale, targetScale);
+            const areaCenterX = (GRAPH_AREA.minX + GRAPH_AREA.maxX) / 2;
+            const areaCenterY = (GRAPH_AREA.minY + GRAPH_AREA.maxY) / 2;
+            const paperRect = paper.el.getBoundingClientRect();
+            const centerX = paperRect.width / 2;
+            const centerY = paperRect.height / 2;
+            paper.translate(centerX - areaCenterX * targetScale, centerY - areaCenterY * targetScale);
+        });
+        // Auto-centrar al inicio
+        setTimeout(() => { $('#center-view-btn').trigger('click'); }, 100);
+
+        // --- Exportar SVG ---
+        // --- Exportar SVG (Corregido: Error cell.size) ---
+        $('#download-svg-btn').on('click', function () {
+            try {
+                // 1. FREEZE
+                const currentTranslate = paper.translate();
+                const currentScale = paper.scale();
+                paper.scale(1, 1);
+                paper.translate(0, 0);
+
+                // 2. CLONE
+                const svgExport = paper.svg.cloneNode(true);
+
+                // 3. RESTORE
+                paper.scale(currentScale.sx, currentScale.sy);
+                paper.translate(currentTranslate.tx, currentTranslate.ty);
+
+                // 4. SMART CROP (Lógica de filtrado corregida)
+                const visibleCells = graph.getCells().filter(cell => {
+                    // A. Si está marcado como oculto explícitamente, fuera.
+                    if (cell.get('hidden')) return false;
+                    
+                    // B. GESTIÓN DE ENLACES (IMPORTANTE: Hacer esto ANTES de llamar a .size())
+                    if (cell.isLink()) {
+                        // Comprobar si los extremos del enlace son visibles
+                        const sourceId = cell.source().id;
+                        const targetId = cell.target().id;
+                        
+                        // Si apunta a coordenadas y no a elementos, lo mostramos
+                        if (!sourceId || !targetId) return true;
+
+                        const sourceCell = graph.getCell(sourceId);
+                        const targetCell = graph.getCell(targetId);
+                        
+                        // Si el origen o destino están ocultos/no existen, ocultamos el enlace
+                        if (!sourceCell || sourceCell.get('hidden')) return false;
+                        if (!targetCell || targetCell.get('hidden')) return false;
+                        
+                        return true; // Es un enlace visible, lo incluimos
+                    }
+
+                    // C. GESTIÓN DE ELEMENTOS (Nodos y Stacks)
+                    // Ahora es seguro llamar a .size() porque ya sabemos que NO es un enlace
+                    const size = cell.size();
+                    
+                    // Ignorar el borde gigante del área (filtro por tamaño)
+                    if (size.width > 9000 || size.height > 5000) return false;
+
+                    return true;
+                });
+
+                // Calcular BBox solo de lo visible
+                let contentBBox = graph.getCellsBBox(visibleCells);
+                
+                if (!contentBBox) {
+                    contentBBox = { x: 0, y: 0, width: 100, height: 100 };
+                }
+
+                const padding = 50;
+                const minX = contentBBox.x - padding;
+                const minY = contentBBox.y - padding;
+                const vbW = contentBBox.width + (padding * 2);
+                const vbH = contentBBox.height + (padding * 2);
+
+                // 5. ATRIBUTOS
+                svgExport.removeAttribute('style');
+                svgExport.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                svgExport.setAttribute('viewBox', `${minX} ${minY} ${vbW} ${vbH}`);
+                svgExport.setAttribute('width', vbW + 'px');
+                svgExport.setAttribute('height', vbH + 'px');
+
+                // 6. ESTILOS
+                const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+                style.textContent = `
+                    text { font-family: "Segoe UI", sans-serif; }
+                    .joint-element { fill: #252526; }
+                    [display="none"] { visibility: hidden; }
+                `;
+                svgExport.insertBefore(style, svgExport.firstChild);
+
+                // 7. ENVIAR
+                const serializer = new XMLSerializer();
+                const svgString = serializer.serializeToString(svgExport);
+
+                vscode.postMessage({
+                    type: 'downloadSVG',
+                    data: 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)))
+                });
+
+            } catch (error) { console.error("Error exportando SVG:", error); }
+        });
+
+        // --- Exportar PNG ---
+        // --- Exportar PNG (Corregido: Error cell.size) ---
+        $('#download-png-btn').on('click', function () {
+            try {
+                // 1. FREEZE
+                const currentTranslate = paper.translate();
+                const currentScale = paper.scale();
+                paper.scale(1, 1);
+                paper.translate(0, 0);
+
+                // 2. CLONE
+                const svgExport = paper.svg.cloneNode(true);
+
+                // 3. RESTORE
+                paper.scale(currentScale.sx, currentScale.sy);
+                paper.translate(currentTranslate.tx, currentTranslate.ty);
+
+                // 4. SMART CROP (Lógica de filtrado corregida)
+                const visibleCells = graph.getCells().filter(cell => {
+                    // A. Ocultos fuera
+                    if (cell.get('hidden')) return false;
+                    
+                    // B. ENLACES (Primero, para evitar crash de .size())
+                    if (cell.isLink()) {
+                        const sourceId = cell.source().id;
+                        const targetId = cell.target().id;
+                        
+                        if (!sourceId || !targetId) return true;
+
+                        const sourceCell = graph.getCell(sourceId);
+                        const targetCell = graph.getCell(targetId);
+                        
+                        if (!sourceCell || sourceCell.get('hidden')) return false;
+                        if (!targetCell || targetCell.get('hidden')) return false;
+                        
+                        return true;
+                    }
+
+                    // C. ELEMENTOS (Seguro llamar a .size())
+                    const size = cell.size();
+                    if (size.width > 9000 || size.height > 5000) return false;
+
+                    return true;
+                });
+
+                let contentBBox = graph.getCellsBBox(visibleCells);
+                
+                if (!contentBBox) {
+                    contentBBox = { x: 0, y: 0, width: 100, height: 100 };
+                }
+
+                const padding = 50;
+                const minX = contentBBox.x - padding;
+                const minY = contentBBox.y - padding;
+                const vbW = contentBBox.width + (padding * 2);
+                const vbH = contentBBox.height + (padding * 2);
+
+                // 5. ESCALADO
+                let exportScale = 4; 
+                let finalWidth = vbW * exportScale;
+                let finalHeight = vbH * exportScale;
+
+                const MAX_PIXELS = 25000000; 
+                if (finalWidth * finalHeight > MAX_PIXELS) {
+                    exportScale = Math.sqrt(MAX_PIXELS / (vbW * vbH));
+                    finalWidth = vbW * exportScale;
+                    finalHeight = vbH * exportScale;
+                }
+
+                svgExport.removeAttribute('style');
+                svgExport.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                svgExport.setAttribute('viewBox', `${minX} ${minY} ${vbW} ${vbH}`);
+                svgExport.setAttribute('width', finalWidth);
+                svgExport.setAttribute('height', finalHeight);
+
+                // 6. ESTILOS
+                const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+                style.textContent = `
+                    text { 
+                        font-family: "Segoe UI", sans-serif; 
+                        text-rendering: geometricPrecision; 
+                        -webkit-font-smoothing: antialiased;
+                    }
+                    .joint-element { fill: #252526; }
+                    [display="none"] { visibility: hidden; } 
+                `;
+                svgExport.insertBefore(style, svgExport.firstChild);
+
+                // 7. RENDERIZADO
+                const serializer = new XMLSerializer();
+                const svgString = serializer.serializeToString(svgExport);
+                const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                const img = new Image();
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = finalWidth;
+                    canvas.height = finalHeight;
+                    const ctx = canvas.getContext('2d');
+
+                    // ctx.fillStyle = '#1e1e1e';
+                    // ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const pngData = canvas.toDataURL('image/png');
+                    URL.revokeObjectURL(url);
+                    vscode.postMessage({ type: 'downloadPNG', data: pngData });
+                };
+                img.src = url;
+
+            } catch (error) { console.error("Error exportando PNG:", error); }
+        });
+        
+
+
+        // =================================================================
+        // 6. MINIMAPA (Corregido: Click en stacks y navegación inmediata)
+        // =================================================================
+        
+        window._minimapPreview = null;
+
+        // 1. Lógica de Movimiento (Usamos mousedown para respuesta inmediata)
+        function handleMinimapNavigation(e) {
+            e.stopPropagation(); 
+            e.preventDefault();
+            
+            // Obtener el rectángulo del contenedor #minimap
+            // Usamos e.currentTarget para asegurarnos de referirnos al contenedor, no a hijos
+            const rect = e.currentTarget.getBoundingClientRect();
+            
+            const mx = e.clientX - rect.left - 10; 
+            const my = e.clientY - rect.top - 10;
+
+            const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
+            const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
+            
+            // Evitar división por cero
+            if (areaW === 0 || areaH === 0) return;
+
+            const scaleX = 200 / areaW;
+            const scaleY = 120 / areaH;
+
+            const targetScale = paper.scale().sx;
+            const paperRect = paper.el.getBoundingClientRect();
+            
+            const logicalW = paperRect.width / targetScale;
+            const logicalH = paperRect.height / targetScale;
+
+            // Centrar vista en el punto presionado
+            const targetLogicalX = (mx / scaleX) + GRAPH_AREA.minX - (logicalW / 2);
+            const targetLogicalY = (my / scaleY) + GRAPH_AREA.minY - (logicalH / 2);
+
+            paper.translate(-targetLogicalX * targetScale, -targetLogicalY * targetScale);
+        }
+
+        // Asignamos la lógica al mousedown (click inmediato)
+        $('#minimap').on('mousedown', handleMinimapNavigation);
+
+        // Preview al mover el ratón
+        $('#minimap').on('mousemove', function(e) {
+            e.stopPropagation(); 
+            e.preventDefault();
+            $(this).css('cursor', 'crosshair'); // Cursor más preciso
+            const rect = this.getBoundingClientRect();
+            window._minimapPreview = { 
+                mx: e.clientX - rect.left - 10, 
+                my: e.clientY - rect.top - 10 
+            };
+        });
+
+        $('#minimap').on('mouseleave', function(e) {
+            $(this).css('cursor', 'default');
+            window._minimapPreview = null;
+        });
+
+        // Función de Renderizado (Con pointer-events: none)
+        function renderMinimap() {
+            const svg = document.getElementById('minimap-svg');
+            if (!svg) return;
+            
+            // Limpiar todo excepto si quisiéramos mantener algo (aquí borramos todo)
+            while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+            const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
+            const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
+            const scaleX = 200 / areaW;
+            const scaleY = 120 / areaH;
+
+            // --- A. BORDE ---
+            const border = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            border.setAttribute('x', 10); border.setAttribute('y', 10);
+            border.setAttribute('width', 200); border.setAttribute('height', 120);
+            border.setAttribute('stroke', '#4fc3f7'); border.setAttribute('stroke-width', '2');
+            border.setAttribute('fill', 'none');
+            // CLAVE: Ignorar clicks en el borde
+            border.setAttribute('pointer-events', 'none'); 
+            svg.appendChild(border);
+
+            // --- B. STACKS ---
+            stackElements.forEach((stack, idx) => {
+                if (stack.get('hidden')) return;
+                const bbox = stack.getBBox();
+                const x = 10 + (bbox.x - GRAPH_AREA.minX) * scaleX;
+                const y = 10 + (bbox.y - GRAPH_AREA.minY) * scaleY;
+                const w = bbox.width * scaleX;
+                const h = bbox.height * scaleY;
+
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x); rect.setAttribute('y', y);
+                rect.setAttribute('width', w); rect.setAttribute('height', h);
+                const color = STACK_COLORS[idx % STACK_COLORS.length] || '#ccc';
+                rect.setAttribute('fill', color);
+                rect.setAttribute('fill-opacity', '0.7');
+                
+                // CLAVE: Ignorar clicks en los stacks para que pasen al fondo
+                rect.setAttribute('pointer-events', 'none'); 
+                
+                svg.appendChild(rect);
+            });
+
+            // --- C. VIEWPORT (Caja azul) ---
+            const paperRect = paper.el.getBoundingClientRect();
+            const scale = paper.scale().sx;
+            const tr = paper.translate();
+            const logicalX = (-tr.tx) / scale;
+            const logicalY = (-tr.ty) / scale;
+            const logicalW = paperRect.width / scale;
+            const logicalH = paperRect.height / scale;
+            
+            const minix = 10 + (logicalX - GRAPH_AREA.minX) * scaleX;
+            const miniy = 10 + (logicalY - GRAPH_AREA.minY) * scaleY;
+            const miniw = logicalW * scaleX;
+            const minih = logicalH * scaleY;
+
+            const viewRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            viewRect.setAttribute('x', minix); viewRect.setAttribute('y', miniy);
+            viewRect.setAttribute('width', miniw); viewRect.setAttribute('height', minih);
+            viewRect.setAttribute('fill', '#4fc3f7'); viewRect.setAttribute('fill-opacity', '0.15');
+            viewRect.setAttribute('stroke', '#4fc3f7'); viewRect.setAttribute('stroke-width', '2');
+            
+            // CLAVE: Ignorar clicks en el viewport
+            viewRect.setAttribute('pointer-events', 'none');
+            
+            svg.appendChild(viewRect);
+
+            // --- D. PREVIEW (Caja blanca) ---
+            if (window._minimapPreview) {
+                const { mx, my } = window._minimapPreview;
+                const previewLogicalX = mx / scaleX + GRAPH_AREA.minX - logicalW / 2;
+                const previewLogicalY = my / scaleY + GRAPH_AREA.minY - logicalH / 2;
+                const minix2 = 10 + (previewLogicalX - GRAPH_AREA.minX) * scaleX;
+                const miniy2 = 10 + (previewLogicalY - GRAPH_AREA.minY) * scaleY;
+                
+                const previewRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                previewRect.setAttribute('x', minix2); previewRect.setAttribute('y', miniy2);
+                previewRect.setAttribute('width', miniw); previewRect.setAttribute('height', minih);
+                previewRect.setAttribute('fill', '#fff'); previewRect.setAttribute('fill-opacity', '0.10');
+                previewRect.setAttribute('stroke', '#fff'); previewRect.setAttribute('stroke-width', '2');
+                
+                // CLAVE: Ignorar clicks en el preview
+                previewRect.setAttribute('pointer-events', 'none');
+                
+                svg.appendChild(previewRect);
+            }
+        }
+
+        function minimapLoop() {
+            renderMinimap();
+            requestAnimationFrame(minimapLoop);
+        }
+        
+        // Iniciar Minimapa
+        minimapLoop();
+
+    }); // Fin del document.ready
+</script>
+</body>
+</html>

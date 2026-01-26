@@ -49,6 +49,48 @@ async function scanAndShowGraph(rootPath: string, context: vscode.ExtensionConte
 		);
 		const htmlContent = getHtmlForWebview(context, finalGraph, stacksFound);
 		panel.webview.html = htmlContent;
+		
+		// Listener para mensajes del webview (descarga PNG)
+		panel.webview.onDidReceiveMessage(async (message) => {
+			if (message.type === 'downloadPNG') {
+				try {
+					const defaultFileName = `cdk-stack-${folderName}-${new Date().toISOString().split('T')[0]}.png`;
+					const uri = await vscode.window.showSaveDialog({
+						defaultUri: vscode.Uri.file(path.join(rootPath, defaultFileName)),
+						filters: { 'PNG Images': ['png'] }
+					});
+					if (uri) {
+						const base64Data = message.data.replace(/^data:image\/png;base64,/, '');
+						const buffer = Buffer.from(base64Data, 'base64');
+						fs.writeFileSync(uri.fsPath, buffer);
+						vscode.window.showInformationMessage(`Gráfico guardado en: ${uri.fsPath}`);
+					}
+				} catch (error) {
+					vscode.window.showErrorMessage('Error al guardar el archivo PNG.');
+					console.error(error);
+				}
+			}
+			if (message.type === 'downloadSVG') {
+				try {
+					const defaultFileName = `cdk-stack-${folderName}-${new Date().toISOString().split('T')[0]}.svg`;
+					const uri = await vscode.window.showSaveDialog({
+						defaultUri: vscode.Uri.file(path.join(rootPath, defaultFileName)),
+						filters: { 'SVG Images': ['svg'] }
+					});
+					if (uri) {
+						// Convertir data URL a string SVG
+						const base64Data = message.data.replace(/^data:image\/svg\+xml;base64,/, '');
+						const svgString = Buffer.from(base64Data, 'base64').toString('utf-8');
+						fs.writeFileSync(uri.fsPath, svgString, 'utf-8');
+						vscode.window.showInformationMessage(`SVG guardado en: ${uri.fsPath}`);
+					}
+				} catch (error) {
+					vscode.window.showErrorMessage('Error al guardar el archivo SVG.');
+					console.error(error);
+				}
+			}
+		});
+		
 		// Config listener igual que antes
 		const configListener = vscode.workspace.onDidChangeConfiguration(e => {
 			const config = vscode.workspace.getConfiguration('cdk-stackmap');
