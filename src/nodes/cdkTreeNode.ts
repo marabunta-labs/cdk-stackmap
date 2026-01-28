@@ -5,6 +5,5 @@ export abstract class CDKTreeNode extends vscode.TreeItem {
         super(label, collapsibleState);
     }
 
-    // Cada nodo debe implementar su propia lógica para obtener hijos
     abstract getChildren(): Promise<CDKTreeNode[]>;
 }
