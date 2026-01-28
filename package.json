@@ -2,10 +2,11 @@
   "name": "cdk-stackmap",
   "displayName": "CDK StackMap",
   "description": "Visualize AWS CDK stacks instantly.",
-  "version": "0.0.1",
-  "publisher": "your-name",
+  "version": "1.0.0",
+  "publisher": "Marabunta",
+  "repository": "https://github.com/marabunta-labs/cdk-stackmap",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.108.1"
   },
   "categories": [
     "Other"
