@@ -3,7 +3,7 @@
   "displayName": "CDK StackMap",
   "description": "Visualize AWS CDK stacks instantly.",
   "version": "0.0.1",
-  "publisher": "tu-nombre", 
+  "publisher": "your-name",
   "engines": {
     "vscode": "^1.107.0"
   },
@@ -16,17 +16,17 @@
     "commands": [
       {
         "command": "cdk-stackmap.selectFolder",
-        "title": "Seleccionar carpeta",
+        "title": "Select Folder",
         "icon": "$(folder-opened)"
       },
       {
         "command": "cdk-stackmap.visualize",
-        "title": "Visualizar",
+        "title": "Visualize",
         "icon": "$(graph)"
       },
       {
         "command": "cdk-stackmap.refresh",
-        "title": "Refrescar",
+        "title": "Refresh",
         "icon": "$(refresh)"
       }
     ],
@@ -50,7 +50,7 @@
     "viewsWelcome": [
       {
         "view": "cdkStackMapView",
-        "contents": "No se ha seleccionado ningún proyecto CDK.\nPara comenzar, selecciona la carpeta raíz que contiene el archivo cdk.out.\n\n[Seleccionar Carpeta CDK](command:cdk-stackmap.selectFolder)"
+        "contents": "No CDK project has been selected.\nTo get started, select the root folder containing the cdk.out file.\n\n[Select CDK Folder](command:cdk-stackmap.selectFolder)"
       }
     ],
     "menus": {
@@ -81,7 +81,7 @@
         "cdk-stackmap.showMinimap": {
           "type": "boolean",
           "default": true,
-          "description": "Mostrar el minimapa en la visualización de stacks."
+          "description": "Show minimap in stack visualization."
         },
         "cdk-stackmap.nodeColorMode": {
           "type": "string",
@@ -90,20 +90,20 @@
             "border"
           ],
           "default": "fill",
-          "description": "Modo de color para los nodos AWS."
+          "description": "Color mode for AWS nodes."
         },
         "cdk-stackmap.graphAreaSize": {
           "type": "string",
           "enum": [ "XS", "S", "M", "L", "XL", "XXL" ],
           "default": "M",
-          "description": "Tamaño del área de dibujo. Mantiene la proporción correcta para el minimapa.",
+          "description": "Drawing area size. Maintains correct aspect ratio for the minimap.",
           "enumDescriptions": [
-            "XS: Muy pequeño (3000x1800)",
-            "S: Pequeño (6000x3600)",
-            "M: Medio (9000x5400)",
-            "L: Grande (12000x7200)",
-            "XL: Extra Grande (18000x10800)",
-            "XXL: Enorme (24000x14400)"
+            "XS: Extra Small (3000x1800)",
+            "S: Small (6000x3600)",
+            "M: Medium (9000x5400)",
+            "L: Large (12000x7200)",
+            "XL: Extra Large (18000x10800)",
+            "XXL: Huge (24000x14400)"
           ]
         }
       }

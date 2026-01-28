@@ -135,9 +135,8 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         return nodePath ? nodePath.split('/')[0] : undefined;
     }
 
-    // --- GRÁFICO (V8: ZERO ORPHAN RESOURCES) ---
     public async getGraphData(): Promise<GraphData> {
-        console.log("--- INICIO GENERACIÓN GRÁFICO (CLEANEST) ---");
+        console.log("--- START GRAPH GENERATION (CLEANEST) ---");
         const nodes: GraphNode[] = [];
         const edges: GraphEdge[] = [];
 
@@ -152,7 +151,6 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         let idCounter = 0;
         const generateId = (prefix: string) => `${prefix.replace(/[^a-zA-Z0-9]/g, '')}_${++idCounter}`;
 
-        // LISTA NEGRA EXTENDIDA
         const CDK_NOISE_PATTERNS = [
             'AssetImage', 'Staging', 'S3Obj', 'Code', 'Repository', 'Parameters', 
             'AssetParameters', 'CheckBootstrapVersion'
@@ -189,13 +187,8 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         const processNode = (treeNode: CDKTreeNode, parentId?: string, currentStackId?: string) => {
             if (!(treeNode instanceof ConstructNode)) return;
 
-            // 1. FILTRO DE NOMBRE (RUIDO CDK)
             if (CDK_NOISE_PATTERNS.some(pattern => treeNode.label.includes(pattern))) return;
 
-            // 2. FILTRO DE RECURSOS HUÉRFANOS EN STACK ROOT
-            // Si eres un "Resource" o "Default" suelto, no te pintamos (tu padre debió haberte absorbido).
-            // Excepción: Si el padre es el Stack, a veces hay recursos sueltos legítimos, 
-            // pero el 99% de las veces "Resource" es un nombre interno que no aporta nada si no tiene un padre semántico.
             if (treeNode.label === 'Resource' || treeNode.label === 'Default') {
                 return;
             }
@@ -214,7 +207,6 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
             let primaryLogicalId = treeNode.logicalId;
             let primaryChild: ConstructNode | undefined;
 
-            // --- HOISTING DE IDENTIDAD ---
             if (!primaryLogicalId) {
                 primaryChild = children.find(c => 
                     c instanceof ConstructNode && 
@@ -233,37 +225,31 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                 }
             }
 
-            // --- TIPO ---
             let nodeType = 'Construct';
             if (treeNode.contextValue === 'cdkStack') nodeType = 'Stack';
             else if (treeNode.cfnResource?.Type) nodeType = treeNode.cfnResource.Type;
             else if (primaryChild && primaryChild.cfnResource?.Type) nodeType = primaryChild.cfnResource.Type;
             else if (treeNode.artifact.attributes?.['aws:cdk:cloudformation:type']) nodeType = treeNode.artifact.attributes['aws:cdk:cloudformation:type'];
 
-            // --- FILTRO ESTRUCTURAL (Carpetas vacías) ---
             const isGenericConstruct = nodeType === 'Construct';
             const hasConstructChildren = children.some(c => c instanceof ConstructNode && c.label !== 'Resource' && c.label !== 'Default');
             
             if (isGenericConstruct && !primaryLogicalId && !hasConstructChildren) {
-                return; // Construct vacío sin identidad AWS ni hijos reales
+                return;
             }
 
-            // --- EXTRACCIÓN DE DEPENDENCIAS (INCLUYENDO HIJOS OCULTOS) ---
+
             const scanProps = (nodesToScan: CDKTreeNode[]) => {
                 nodesToScan.forEach(child => {
-                    // Si es una propiedad directa
                     if (child instanceof PropertyNode) {
                         extractRefs(child.value).forEach(ref => {
                             if (!ref.startsWith('AWS::')) pendingDeps.push({ source: nodeId, targetLogicalId: ref });
                         });
                     }
-                    // Si es un nodo hijo "Resource" (que vamos a ocultar), extraemos sus props también
-                    // Esto asegura que si el recurso interno tiene dependencias, se le atribuyen al padre visible.
                     if (child instanceof ConstructNode && (child.label === 'Resource' || child.label === 'Default')) {
                         const grandChildren = this.resolveChildren(child);
                         scanProps(grandChildren);
                         
-                        // También chequeamos DependsOn del hijo oculto
                         if (child.cfnResource?.DependsOn) {
                             const deps = Array.isArray(child.cfnResource.DependsOn) ? child.cfnResource.DependsOn : [child.cfnResource.DependsOn];
                             deps.forEach((d: string) => pendingDeps.push({ source: nodeId, targetLogicalId: d }));
@@ -272,10 +258,9 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                 });
             };
 
-            // Escaneamos mis hijos directos
             scanProps(children);
 
-            // Mis propios DependsOn
+
             if (treeNode.cfnResource?.DependsOn) {
                 const deps = Array.isArray(treeNode.cfnResource.DependsOn) ? treeNode.cfnResource.DependsOn : [treeNode.cfnResource.DependsOn];
                 deps.forEach((d: string) => pendingDeps.push({ source: nodeId, targetLogicalId: d }));
@@ -290,11 +275,8 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                 }
             });
 
-            // RECURSIÓN
             children.forEach(child => {
                 if (child instanceof ConstructNode) {
-                    // IMPORTANTE: Ya hemos extraído la info de 'Resource' y 'Default' en scanProps.
-                    // Ahora simplemente NO los procesamos recursivamente para que no generen nodos.
                     if (child.label !== 'Resource' && child.label !== 'Default') {
                         processNode(child, nodeId, myStackId);
                     }
@@ -324,7 +306,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
             }
         });
 
-        console.log("--- FIN ---");
+        console.log("--- END ---");
         return { nodes, edges };
     }
 }

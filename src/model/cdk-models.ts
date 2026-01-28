@@ -1,4 +1,3 @@
-// Interfaces para el tree.json
 export interface TreeArtifact {
     id: string;
     path: string;
@@ -7,7 +6,6 @@ export interface TreeArtifact {
     constructInfo?: { fqn: string; version: string };
 }
 
-// Interfaces para el template.json
 export interface CfnTemplate {
     Resources: { [logicalId: string]: CfnResource };
 }
@@ -18,7 +16,6 @@ export interface CfnResource {
     DependsOn?: string | string[];
 }
 
-// model/graph-models.ts (o donde tengas tus modelos)
 export interface GraphData {
     nodes: GraphNode[];
     edges: GraphEdge[];

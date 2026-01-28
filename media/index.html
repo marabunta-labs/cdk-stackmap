@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.6.0/backbone-min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.7.7/joint.min.js"></script>
 
-    <title>Stack Manager - Estabilidad Total</title>
+    <title>Stack Manager - Total Stability</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1e1e1e; font-family: 'Segoe UI', sans-serif; }
         
@@ -37,7 +37,6 @@
         #ui.collapsed .ui-section-content, 
         #ui.collapsed #center-view-btn { display: none; }
 
-        /* Cabeceras (Stacks y Descargar) */
         .ui-section-header {
             background: #333;
             padding: 12px 15px;
@@ -56,7 +55,6 @@
         .arrow { font-size: 12px; transition: transform 0.3s ease; }
         .ui-section-header.active .arrow { transform: rotate(180deg); }
 
-        /* Contenido Desplegable (Animación) */
         .ui-section-content {
             max-height: 0;
             overflow: hidden;
@@ -69,7 +67,6 @@
             overflow-y: auto;
         }
 
-        /* Lista de Stacks */
         #stack-list { padding: 5px; }
         .stack-row {
             display: flex; align-items: center; gap: 10px;
@@ -79,7 +76,6 @@
         .stack-row:hover { background: rgba(255, 255, 255, 0.05); }
         input[type="checkbox"] { accent-color: #007acc; cursor: pointer; }
 
-        /* Botón Centrar Vista */
         #center-view-btn {
             display: block;
             margin: 10px auto 0 auto;
@@ -100,7 +96,7 @@
             color: #111;
         }
 
-        /* Botones de Descarga (Estilo Lista) */
+        /* Download Buttons (List Style) */
         .download-item {
             width: 100%;
             padding: 12px 15px;
@@ -116,9 +112,6 @@
         .download-item:last-child { border-bottom: none; }
         .download-item:hover { background: #2a2a2a; color: #fff; }
 
-        /* #download-png-btn { color: #4fc3f7; }
-        #download-png-btn:hover { color: #8bf6ff; } */
-
     </style>
 </head>
 <body>
@@ -133,7 +126,7 @@
         </div>
 
         <div class="ui-section-header" id="filters-header">
-            <span>Filtros por Tipo</span>
+            <span>Filters by Type</span>
             <span class="arrow">▼</span>
         </div>
         <div class="ui-section-content" id="filters-content">
@@ -141,17 +134,17 @@
         </div>
 
         <div class="ui-section-header" id="download-header">
-            <span>Descargar</span>
+            <span>Download</span>
             <span class="arrow">▼</span>
         </div>
         <div class="ui-section-content" id="download-content">
             <div class="download-list">
-                <button id="download-svg-btn" class="download-item">Descargar SVG</button>
-                <button id="download-png-btn" class="download-item">Descargar PNG</button>
+                <button id="download-svg-btn" class="download-item">Download SVG</button>
+                <button id="download-png-btn" class="download-item">Download PNG</button>
             </div>
         </div>
 
-        <button id="center-view-btn">Centrar vista</button>
+        <button id="center-view-btn">Center View</button>
     </div>
 
     <div id="paper"></div>
@@ -161,26 +154,18 @@
     </div>
 
 <script>
-    // =================================================================
-    // 1. API GLOBAL (Crucial: Solo se llama una vez)
-    // =================================================================
     const vscode = acquireVsCodeApi(); 
 
-    // 1. Definición inicial basada en config inyectada
     const conf = window.__USER_CONFIG__ || {};
     const initialW = conf.graphAreaWidth || 10000;
     const initialH = conf.graphAreaHeight || 6000;
 
-    // Calculamos coordenadas centradas en 0,0
     let GRAPH_AREA = { 
         minX: -initialW / 2, 
         minY: -initialH / 2, 
         maxX: initialW / 2, 
         maxY: initialH / 2 
     };
-
-    // Definir área del grafo GLOBAL para que todos la vean
-    //const GRAPH_AREA = { minX: -5000, minY: -3000, maxX: 5000, maxY: 3000 };
 
     function clampPosition(x, y, width, height) {
         const clampedX = Math.max(GRAPH_AREA.minX, Math.min(x, GRAPH_AREA.maxX - width));
@@ -190,14 +175,9 @@
 
     $(document).ready(function() {
         
-        // =================================================================
-        // 2. CONFIGURACIÓN E INICIALIZACIÓN
-        // =================================================================
-        
         const STACK_HEADER_HEIGHT = 40;
         const HEADER_PADDING = 10;
 
-        // Listener de mensajes de la extensión (Configuración)
         window.addEventListener('message', (event) => {
             const message = event.data;
             if (message && message.type === 'updateConfig' && message.config) {
@@ -208,7 +188,6 @@
                         $('#minimap').css('display', 'block');
                     }
                 }
-                // Actualizar colores si cambia el modo
                 if (typeof message.config.nodeColorMode !== 'undefined' && typeof window.getResourceColor === 'function' && Array.isArray(window.resources)) {
                     window.resources.forEach((res) => {
                         if (!res._cell) return;
@@ -235,8 +214,6 @@
                         maxY: h / 2 
                     };
 
-                    // IMPORTANTE: Actualizar el borde visual (rectángulo azul)
-                    // Asumiendo que guardaste la referencia a 'areaBorder' en una variable global o accesible
                     if (typeof areaBorder !== 'undefined') {
                         areaBorder.position(GRAPH_AREA.minX, GRAPH_AREA.minY);
                         areaBorder.resize(w, h);
@@ -246,14 +223,12 @@
             }
         });
 
-        // Visibilidad inicial del minimapa
         if (window.__USER_CONFIG__ && window.__USER_CONFIG__.showMinimap === false) {
             $('#minimap').css('display', 'none');
         } else {
             $('#minimap').css('display', 'block');
         }
 
-        // Inicializar Graph y Paper
         const namespace = joint.shapes;
         const graph = new joint.dia.Graph({}, { cellNamespace: namespace });
 
@@ -272,10 +247,6 @@
             sorting: joint.dia.Paper.sorting.APPROX
         });
 
-        // =================================================================
-        // 3. PROCESAMIENTO DE DATOS Y CONSTRUCCIÓN
-        // =================================================================
-        
         const GRAPH_DATA = {{graphData}};
         const RAW_DATA = [...GRAPH_DATA.nodes, ...GRAPH_DATA.edges];
         const stackElements = [];
@@ -286,7 +257,6 @@
         window.resources = resources; 
         const edges = RAW_DATA.filter(e => e.data.source && e.data.target);
 
-        // --- CONSTRUCCIÓN UI LISTA DE STACKS ---
         function updateCounter() {
             const total = stacks.length;
             const visible = $('.stack-checkbox:checked').length;
@@ -325,13 +295,11 @@
         });
         updateCounter();
 
-        // --- LOGICA ACORDEON ---
         $('.ui-section-header').on('click', function() {
             $(this).toggleClass('active');
             $(this).next('.ui-section-content').toggleClass('open');
         });
 
-        // Visibilidad de Stacks
         $('.stack-checkbox').on('change', function () {
             const stackId = $(this).data('id');
             const isVisible = $(this).is(':checked');
@@ -344,7 +312,6 @@
                     child.set('hidden', !isVisible);
                     child.attr('./display', display);
                 });
-                // Actualizar enlaces
                 const allCells = [stack, ...stack.getEmbeddedCells()];
                 allCells.forEach(cell => {
                     const links = graph.getConnectedLinks(cell);
@@ -365,7 +332,6 @@
             updateCounter();
         });
 
-        // --- TOOLTIP MEJORADO ---
         const tooltip = $('<div id="graph-tooltip"></div>').css({
             position: 'fixed', pointerEvents: 'none', zIndex: 9999,
             background: 'rgba(30,30,30,0.97)', color: '#fff',
@@ -379,36 +345,30 @@
         function showTooltip(html, x, y) { tooltip.html(html).css({ left: x + 16, top: y + 16, display: 'block' }); }
         function hideTooltip() { tooltip.hide(); }
 
-        // Función auxiliar para limpiar nombres (ID y Stacks)
         function cleanName(text) {
             if (!text) return '';
             return text
-                .replace(/_\d+$/, '')           // Quita sufijos numéricos (ej: _308, _179)
-                .replace(/[A-Fa-f0-9]{8}$/, '') // Quita hashes de 8 chars (ej: C8295D)
-                .replace(/_[A-Za-z0-9]+$/, ''); // Quita sufijos mixtos con guion bajo
+                .replace(/_\d+$/, '')
+                .replace(/[A-Fa-f0-9]{8}$/, '')
+                .replace(/_[A-Za-z0-9]+$/, '');
         }
 
         paper.on('element:mouseenter', function (cellView, evt) {
             const model = cellView.model;
-            // Ignoramos el tooltip para la caja contenedora del Stack
             if (model.get('type') === 'stack') return;
 
             let info = '';
             
-            // 1. Tipo de Recurso
             if (model.attributes.data && model.attributes.data.type) {
-                // Quitamos el prefijo 'AWS::' para que sea más limpio
                 const shortType = model.attributes.data.type.replace(/^AWS::\w+::/, '');
-                info += `<b>Tipo:</b> ${shortType}`;
+                info += `<b>Type:</b> ${shortType}`;
             }
 
-            // 2. ID (Limpiamos el nombre aquí)
             if (model.attributes.data && model.attributes.data.id) {
                 const cleanId = cleanName(model.attributes.data.id);
                 info += `\n<b>ID:</b> ${cleanId}`;
             }
 
-            // 3. Stack Padre (Limpiamos el nombre aquí también)
             if (model.attributes.data && model.attributes.data.parent) {
                 const cleanParent = cleanName(model.attributes.data.parent);
                 info += `\n<b>Stack:</b> ${cleanParent}`;
@@ -420,17 +380,15 @@
         paper.on('element:mousemove', (cellView, evt) => showTooltip(tooltip.html(), evt.clientX, evt.clientY));
         paper.on('element:mouseleave', hideTooltip);
 
-        // También aplicamos la limpieza a los ENLACES (flechas)
         paper.on('link:mouseenter', function (linkView, evt) {
             const model = linkView.model;
-            let info = `<b>Conexión</b>`;
+            let info = `<b>Connection</b>`;
             
             const sourceId = model.source() && model.source().id;
             const targetId = model.target() && model.target().id;
             
             let sourceLabel = '?', targetLabel = '?';
 
-            // Buscar etiquetas reales y limpiarlas
             if (sourceId) { 
                 const s = model.graph.getCell(sourceId); 
                 if(s && s.attributes.data) sourceLabel = cleanName(s.attributes.data.label || s.attributes.data.id); 
@@ -440,16 +398,13 @@
                 if(t && t.attributes.data) targetLabel = cleanName(t.attributes.data.label || t.attributes.data.id); 
             }
 
-            info += `\n<b>Origen:</b> ${sourceLabel}\n<b>Destino:</b> ${targetLabel}`;
+            info += `\n<b>Source:</b> ${sourceLabel}\n<b>Target:</b> ${targetLabel}`;
             showTooltip(info, evt.clientX, evt.clientY);
         });
         paper.on('link:mousemove', (linkView, evt) => showTooltip(tooltip.html(), evt.clientX, evt.clientY));
         paper.on('link:mouseleave', hideTooltip);
 
 
-        // =========================================================
-        // DEFINICIÓN DE CATEGORÍAS (Para Colores y Filtros)
-        // =========================================================
         const RESOURCE_CATEGORIES = {
             'Compute': {
                 color: '#FF9900',
@@ -483,9 +438,9 @@
                 color: '#9C27B0',
                 types: ['Stream', 'DeliveryStream', 'Dataset', 'Crawler', 'Job', 'WorkGroup']
             },
-            'Otros': {
+            'Others': {
                 color: '#666666',
-                types: [] // Aquí caerá todo lo demás
+                types: []
             }
         };
 
@@ -493,17 +448,15 @@
             const container = $('#filter-list');
             container.empty();
 
-            // 1. Identificar qué tipos existen en el grafo actual
             const existingTypes = new Set();
             window.resources.forEach(res => {
                 const t = res.data.type.replace(/^AWS::[\w]+::/, '');
                 existingTypes.add(t);
             });
 
-            // 2. Agrupar por Categoría
             const groups = {};
             existingTypes.forEach(type => {
-                let foundCat = 'Otros';
+                let foundCat = 'Others';
                 for (const [catName, catData] of Object.entries(RESOURCE_CATEGORIES)) {
                     if (catData.types.includes(type)) {
                         foundCat = catName;
@@ -514,17 +467,13 @@
                 groups[foundCat].push(type);
             });
 
-            // 3. Renderizar HTML (Acordeones anidados o Títulos simples)
-            // Usaremos títulos pequeños para separar categorías
             Object.keys(groups).forEach(catName => {
                 const types = groups[catName];
                 if (types.length === 0) return;
 
-                // Título de Categoría
                 const catHeader = $(`<div style="font-weight:bold; color:${RESOURCE_CATEGORIES[catName].color}; margin-top:8px; margin-bottom:4px; font-size:11px; text-transform:uppercase;">${catName}</div>`);
                 container.append(catHeader);
 
-                // Checkboxes para cada tipo
                 types.forEach(type => {
                     const row = $(`
                         <div class="filter-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; padding-left:8px;">
@@ -536,34 +485,28 @@
                 });
             });
 
-            // 4. Lógica de Filtrado
             $('.type-filter-cb').on('change', function() {
                 const typeToToggle = $(this).data('type');
                 const isVisible = $(this).is(':checked');
 
-                // Filtrar recursos
                 window.resources.forEach(res => {
                     const t = res.data.type.replace(/^AWS::[\w]+::/, '');
                     if (t === typeToToggle && res._cell) {
                         
-                        // Ocultar/Mostrar celda
                         const display = isVisible ? 'block' : 'none';
                         res._cell.attr('./display', display);
                         res._cell.set('hidden', !isVisible);
 
-                        // Actualizar enlaces conectados
                         const links = graph.getConnectedLinks(res._cell);
                         links.forEach(link => {
                             if (!isVisible) {
                                 link.attr('./display', 'none');
                             } else {
-                                // Solo mostramos el link si AMBOS extremos son visibles
                                 const sId = link.source().id;
                                 const tId = link.target().id;
                                 const sCell = graph.getCell(sId);
                                 const tCell = graph.getCell(tId);
                                 
-                                // Chequeo de seguridad por si es un stack lo que está al otro lado
                                 const sHidden = sCell.get('hidden');
                                 const tHidden = tCell.get('hidden');
 
@@ -580,10 +523,8 @@
             });
         }
 
-        // LLAMAR A LA FUNCIÓN AL INICIAR
         buildFilterUI();
 
-        // --- CONSTRUCCIÓN DEL GRAFO ---
         const areaCenterX = (GRAPH_AREA.minX + GRAPH_AREA.maxX) / 2;
         const areaCenterY = (GRAPH_AREA.minY + GRAPH_AREA.maxY) / 2;
         const stacksPerRow = Math.ceil(Math.sqrt(stacks.length));
@@ -595,7 +536,6 @@
         let startY = areaCenterY - gridHeight / 2;
 
 
-        // Nueva función getResourceColor optimizada
         function getResourceColor(fullType) {
             if (!fullType) return '#333';
             const shortType = fullType.replace(/^AWS::[\w]+::/, '');
@@ -603,9 +543,9 @@
             for (const [catName, catData] of Object.entries(RESOURCE_CATEGORIES)) {
                 if (catData.types.includes(shortType)) return catData.color;
             }
-            return RESOURCE_CATEGORIES['Otros'].color;
+            return RESOURCE_CATEGORIES['Others'].color;
         }
-        window.getResourceColor = getResourceColor; // Exponer para configuraciones
+        window.getResourceColor = getResourceColor;
 
         stacks.forEach((stackData, i) => {
             const col = i % stacksPerRow;
@@ -613,7 +553,6 @@
             const x = startX + col * STACK_X_SPACING + Math.random() * 60 - 30;
             const y = startY + row * STACK_Y_SPACING + Math.random() * 60 - 30;
             
-            // Usamos la constante global
             const headerH = STACK_HEADER_HEIGHT; 
             
             const width = 240;
@@ -627,11 +566,10 @@
                 root: { title: stackData.data.id },
                 header: { fill: headerColor, stroke: '#444', height: headerH },
                 
-                // CAMBIO AQUÍ: Fuente más grande (15px)
                 headerText: { 
                     text: stackData.data.label, 
                     fill: '#fff', 
-                    fontSize: 15, // Aumentado
+                    fontSize: 15,
                     fontWeight: 'bold', 
                     fontFamily: 'Segoe UI' 
                 },
@@ -645,7 +583,6 @@
 
             const childResources = resources.filter(r => r.data.parent === stackData.data.id);
             const resWidth = 160, resHeight = 36;
-            // Ajustamos el centro vertical (cy) para considerar el nuevo header
             const cx = x + width / 2 - resWidth / 2;
             const cy = y + headerH + (height - headerH - 20) / 2 - resHeight / 2;
             
@@ -702,7 +639,6 @@
             }
         });
 
-        // Borde Visual del Área
         const areaBorder = new joint.shapes.standard.Rectangle();
         areaBorder.position(GRAPH_AREA.minX, GRAPH_AREA.minY);
         areaBorder.resize(GRAPH_AREA.maxX - GRAPH_AREA.minX, GRAPH_AREA.maxY - GRAPH_AREA.minY);
@@ -713,10 +649,6 @@
         areaBorder.addTo(graph);
         setTimeout(() => { areaBorder.toBack(); }, 100);
 
-
-        // =================================================================
-        // 4. INTERACCIONES, CÁMARA Y FÍSICAS (Sin cambios de lógica)
-        // =================================================================
 
         let draggedElementId = null;
         let draggingSingleNodeStack = null;
@@ -768,68 +700,46 @@
             dragStartStackPos = null;
         });
 
-        // Constantes de tamaño mínimo (Cabecera + un poquito de cuerpo)
         const MIN_STACK_WIDTH = 240;
-        const MIN_STACK_HEIGHT = 60; // Altura justa para el Header y poco más
+        const MIN_STACK_HEIGHT = 60;
 
-        // REEMPLAZAR LA FUNCIÓN updateStackLayout ENTERA POR ESTA:
         function updateStackLayout(stack) {
             if (!stack || stack.get('hidden')) return;
 
-            // 1. Filtrar solo visibles
             const visibleEmbeds = stack.getEmbeddedCells().filter(c => !c.get('hidden'));
 
-            // CASO A: Stack vacío (o todo oculto) -> Tamaño mínimo
             if (visibleEmbeds.length === 0) {
                 const currentSize = stack.size();
-                // Solo redimensionar si es necesario para evitar parpadeo
                 if (currentSize.width !== 240 || currentSize.height !== 60) {
                     stack.resize(240, 60);
                 }
                 return;
             }
 
-            // CASO B: Hay contenido visible -> Ajuste manual ("Manual fitEmbeds")
-            
-            // 1. Calcular BBox de los hijos visibles
             const bbox = graph.getCellsBBox(visibleEmbeds);
             
-            // Padding deseado
             const padding = { top: STACK_HEADER_HEIGHT + 20, bottom: 20, left: 20, right: 20 };
-            
-            // Calcular nueva geometría del Stack
+
             const newX = bbox.x - padding.left;
             const newY = bbox.y - padding.top;
             const newW = bbox.width + padding.left + padding.right;
             const newH = bbox.height + padding.top + padding.bottom;
             
-            // 2. Aplicar Tamaño
             stack.resize(newW, newH);
             
-            // 3. Aplicar Posición (Con truco de compensación)
             const currentPos = stack.position();
             const dx = newX - currentPos.x;
             const dy = newY - currentPos.y;
             
-            // Si la diferencia es muy pequeña, ignoramos para ahorrar CPU
             if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
 
-            // Movemos el Stack (esto arrastra a TODOS los hijos, visibles y ocultos)
             stack.translate(dx, dy);
-            
-            // IMPORTANTE: Movemos los hijos VISIBLES hacia atrás (-dx, -dy)
-            // Resultado: Los nodos visibles se quedan quietos en pantalla, 
-            // y el Stack parece haberse movido debajo de ellos para abrazarlos.
+
             visibleEmbeds.forEach(child => {
                 child.translate(-dx, -dy);
             });
-
-            // NOTA: Los nodos OCULTOS se habrán movido con el stack (dx, dy).
-            // Esto es positivo: cuando los vuelvas a mostrar, estarán más cerca 
-            // del grupo actual en lugar de quedarse rezagados.
         }
 
-        // --- SISTEMA DE FÍSICAS (CÓDIGO EXACTO PROVISTO) ---
         function physicsLoop() {
             resolveInternalPhysics();
             resolveStackCollisions();
@@ -838,7 +748,6 @@
 
         function resolveInternalPhysics() {
             let anyMoved = false;
-            // AJUSTES DE FÍSICA ORIGINALES
             const REPULSION_DIST = 450;
             const REPULSION_STR = 300.0;
             const ATTRACTION_DIST = 130;
@@ -852,12 +761,10 @@
             stackElements.forEach(stack => {
                 if (stack.get('hidden')) return;
                 
-                // FILTRO CRÍTICO: Solo nodos visibles para calcular el centro de masas
                 const allChildren = stack.getEmbeddedCells();
                 const visibleChildren = allChildren.filter(c => !c.get('hidden'));
                 
                 if (visibleChildren.length === 0) {
-                    // Si no hay nodos visibles, actualizamos el layout (encoger stack) y salimos
                     updateStackLayout(stack);
                     return;
                 }
@@ -868,20 +775,15 @@
 
                 let stackMoved = false;
 
-                // Bucle PRINCIPAL: Solo iteramos sobre nodos VISIBLES
                 for (let i = 0; i < visibleChildren.length; i++) {
                     const nodeA = visibleChildren[i];
-                    // (El chequeo nodeA.hidden ya no hace falta porque iteramos visibleChildren)
                     if (nodeA.id === draggedElementId) continue;
                     let fx = 0, fy = 0;
                     const aCenter = nodeA.getBBox().center();
 
-                    // 1. REPULSIÓN (Solo contra otros visibles)
                     for (let j = 0; j < visibleChildren.length; j++) {
                         if (i === j) continue;
                         const nodeB = visibleChildren[j];
-                        
-                        // CRÍTICO: Si nodeB estuviera oculto, no entraría aquí, así que arreglado.
                         
                         const bCenter = nodeB.getBBox().center();
                         let dx = aCenter.x - bCenter.x;
@@ -897,10 +799,8 @@
                         }
                     }
 
-                    // 2. ATRACCIÓN POR ENLACES (Solo si el otro extremo es visible)
                     const connectedLinks = graph.getConnectedLinks(nodeA);
                     connectedLinks.forEach(link => {
-                        // Si el link está oculto, ignorar fuerzas
                         if (link.attr('./display') === 'none') return;
 
                         const sourceId = link.source().id;
@@ -909,7 +809,6 @@
                         if (sourceId === nodeA.id && targetId) otherNode = graph.getCell(targetId);
                         else if (targetId === nodeA.id && sourceId) otherNode = graph.getCell(sourceId);
 
-                        // CRÍTICO: Verificar que el otro nodo sea visible y esté en este stack
                         if (otherNode && visibleChildren.includes(otherNode) && !otherNode.get('hidden')) {
                             const otherCenter = otherNode.getBBox().center();
                             let dx = otherCenter.x - aCenter.x;
@@ -924,11 +823,9 @@
                         }
                     });
 
-                    // 3. CENTER PULL
                     fx += (cx - aCenter.x) * CENTER_PULL;
                     fy += (cy - aCenter.y) * CENTER_PULL;
 
-                    // Integración
                     fx *= DAMPING; fy *= DAMPING;
                     const speed = Math.sqrt(fx * fx + fy * fy);
                     if (speed > MAX_SPEED) { fx = (fx / speed) * MAX_SPEED; fy = (fy / speed) * MAX_SPEED; }
@@ -941,7 +838,6 @@
                     }
                 }
 
-                // COLISIONES (Evitar solapamiento visual, solo entre visibles)
                 const pad = COLLISION_PADDING;
                 for (let i = 0; i < visibleChildren.length; i++) {
                     const childA = visibleChildren[i];
@@ -952,7 +848,6 @@
                         if (bA.x < bB.x + bB.width + pad && bA.x + bA.width + pad > bB.x &&
                             bA.y < bB.y + bB.height + pad && bA.y + bA.height + pad > bB.y) {
                             
-                            // Lógica simple de separación
                             const cA = bA.center();
                             const cB = bB.center();
                             let dx = cA.x - cB.x; let dy = cA.y - cB.y;
@@ -973,7 +868,6 @@
                     }
                 }
 
-                // AL FINAL: Recalcular tamaño del Stack para ajustarse a los VISIBLES
                 updateStackLayout(stack);
 
                 if (stackMoved) anyMoved = true;
@@ -1019,7 +913,6 @@
                         let mx = 0, my = 0;
                         if (penX < penY) mx = penX * (dx > 0 ? 1 : -1); else my = penY * (dy > 0 ? 1 : -1);
                         
-                        // ANTI-VIBRACIÓN STACKS
                         if (Math.abs(mx) < 3.0 && Math.abs(my) < 3.0) continue;
 
                         const aDrag = (A.id === draggedElementId || A.getEmbeddedCells().some(c => c.id === draggedElementId));
@@ -1049,11 +942,9 @@
             }
         }
         
-        // Iniciar Físicas
         physicsLoop();
 
 
-        // --- CÁMARA & ZOOM ---
         const zoomSpeed = 0.1;
         paper.el.addEventListener('wheel', function (e) {
             if (e.ctrlKey) return;
@@ -1088,11 +979,6 @@
         $(document).on('mouseup', () => { panning = false; $('#paper').removeClass('panning'); });
 
 
-        // =================================================================
-        // 5. BOTONES DE ACCIÓN (Centrar y Exportar)
-        // =================================================================
-        
-        // --- Centrar Vista ---
         $('#center-view-btn').on('click', function () {
             const targetScale = 0.4;
             paper.scale(targetScale, targetScale);
@@ -1103,30 +989,20 @@
             const centerY = paperRect.height / 2;
             paper.translate(centerX - areaCenterX * targetScale, centerY - areaCenterY * targetScale);
         });
-        // Auto-centrar al inicio
         setTimeout(() => { $('#center-view-btn').trigger('click'); }, 100);
 
-        // --- Exportar SVG ---
-        // --- Exportar SVG (Corregido: Error cell.size) ---
-        // --- Exportar SVG (Con Transparencia Condicional) ---
         $('#download-svg-btn').on('click', function () {
             try {
-                // 1. FREEZE
                 const currentTranslate = paper.translate();
                 const currentScale = paper.scale();
                 paper.scale(1, 1);
                 paper.translate(0, 0);
 
-                // 2. CLONE
                 const svgExport = paper.svg.cloneNode(true);
 
-                // 3. RESTORE
                 paper.scale(currentScale.sx, currentScale.sy);
                 paper.translate(currentTranslate.tx, currentTranslate.ty);
 
-                // =========================================================
-                // 4. APLICAR TRANSPARENCIAS
-                // =========================================================
                 const isBorderMode = window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border';
 
                 graph.getElements().forEach(element => {
@@ -1140,18 +1016,15 @@
                     if (body) {
                         const type = element.get('type');
 
-                        // Stacks siempre transparentes
                         if (type === 'stack' || element.get('stackName')) {
                             body.setAttribute('fill', 'none');
                         }
-                        // Nodos transparentes solo si estamos en modo borde
                         else if (isBorderMode) {
                             body.setAttribute('fill', 'none');
                         }
                     }
                 });
 
-                // 5. SMART CROP
                 const visibleCells = graph.getCells().filter(cell => {
                     if (cell.get('hidden')) return false;
                     if (cell.isLink()) {
@@ -1175,48 +1048,45 @@
                 const vbW = contentBBox.width + (padding * 2);
                 const vbH = contentBBox.height + (padding * 2);
 
-                // 6. ATRIBUTOS
                 svgExport.removeAttribute('style');
                 svgExport.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
                 svgExport.setAttribute('viewBox', `${minX} ${minY} ${vbW} ${vbH}`);
                 svgExport.setAttribute('width', vbW + 'px');
                 svgExport.setAttribute('height', vbH + 'px');
 
-                // 7. ESTILOS
                 const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
                 style.textContent = `
                     text { 
                         font-family: "Segoe UI", sans-serif;
                         
-                        /* 1. Texto oscuro (casi negro) para que se lea en papel/fondo blanco */
+                        /* 1. Dark text (almost black) for readability on paper/white background */
                         fill: #111111;
-                        font-weight: 600; /* Un poco de negrita ayuda */
+                        font-weight: 600; /* A bit of bold helps */
 
-                        /* 2. El TRUCO DEL HALO: Borde blanco grueso */
+                        /* 2. THE HALO TRICK: Thick white border */
                         stroke: #ffffff;
                         stroke-width: 3px;
-                        stroke-linejoin: round; /* Bordes redondeados para que no haya picos */
+                        stroke-linejoin: round; /* Rounded borders to avoid spikes */
                         
-                        /* 3. MÁGIA: Dibuja el borde DETRÁS del relleno del texto */
-                        /* Si no pones esto, el borde tapará la letra fina */
+                        /* 3. MAGIC: Draw the border BEHIND the text fill */
+                        /* Without this, the border will cover the thin letter */
                         paint-order: stroke fill;
                         
-                        /* Renderizado nítido */
+                        /* Sharp rendering */
                         text-rendering: geometricPrecision; 
                         -webkit-font-smoothing: antialiased;
                     }
 
-                    /* Mantenemos el color oscuro para las líneas/bordes de los nodos */
+                    /* Keep dark color for node lines/borders */
                     .joint-element { 
                         fill: #252526; 
                     }
                     
-                    /* Ocultar elementos display:none */
+                    /* Hide elements with display:none */
                     [display="none"] { visibility: hidden; } 
                 `;
                 svgExport.insertBefore(style, svgExport.firstChild);
 
-                // 8. ENVIAR
                 const serializer = new XMLSerializer();
                 const svgString = serializer.serializeToString(svgExport);
 
@@ -1225,43 +1095,28 @@
                     data: 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)))
                 });
 
-            } catch (error) { console.error("Error exportando SVG:", error); }
+            } catch (error) { console.error("Error exporting SVG:", error); }
         });
 
 
-        // --- Exportar PNG ---
-        // --- Exportar PNG (Con Stacks Transparentes) ---
-        // --- Exportar PNG (Con Transparencia Condicional) ---
-        // --- Exportar PNG (Con Transparencia Condicional) ---
         $('#download-png-btn').on('click', function () {
             try {
-                // 1. FREEZE
                 const currentTranslate = paper.translate();
                 const currentScale = paper.scale();
                 paper.scale(1, 1);
                 paper.translate(0, 0);
 
-                // 2. CLONE
                 const svgExport = paper.svg.cloneNode(true);
 
-                // 3. RESTORE
                 paper.scale(currentScale.sx, currentScale.sy);
                 paper.translate(currentTranslate.tx, currentTranslate.ty);
 
-                // =========================================================
-                // 4. APLICAR TRANSPARENCIAS (Stacks y Nodos)
-                // =========================================================
-                
-                // Verificamos si el usuario tiene activado el modo "Solo Borde"
                 const isBorderMode = window.__USER_CONFIG__ && window.__USER_CONFIG__.nodeColorMode === 'border';
 
                 graph.getElements().forEach(element => {
-                    // Buscamos el elemento correspondiente en el SVG clonado
                     const elGroup = svgExport.querySelector(`[model-id="${element.id}"]`);
                     if (!elGroup) return;
 
-                    // Buscamos el cuerpo (rectángulo principal)
-                    // JointJS suele usar joint-selector="body", si no, buscamos el primer rect/path
                     const body = elGroup.querySelector('[joint-selector="body"]') || 
                                  elGroup.querySelector('rect') || 
                                  elGroup.querySelector('path');
@@ -1269,20 +1124,16 @@
                     if (body) {
                         const type = element.get('type');
 
-                        // CASO A: Es un STACK -> Siempre transparente
                         if (type === 'stack' || element.get('stackName')) {
                             body.setAttribute('fill', 'none');
                         }
                         
-                        // CASO B: Es un NODO (Recurso) y estamos en modo Borde
-                        // Si isBorderMode es true, el nodo es negro (#222). Lo volvemos transparente.
                         else if (isBorderMode) {
                             body.setAttribute('fill', 'none');
                         }
                     }
                 });
 
-                // 5. SMART CROP (Recorte)
                 const visibleCells = graph.getCells().filter(cell => {
                     if (cell.get('hidden')) return false;
                     if (cell.isLink()) {
@@ -1306,7 +1157,6 @@
                 const vbW = contentBBox.width + (padding * 2);
                 const vbH = contentBBox.height + (padding * 2);
 
-                // 6. ESCALADO (Calidad)
                 let exportScale = 4; 
                 let finalWidth = vbW * exportScale;
                 let finalHeight = vbH * exportScale;
@@ -1323,41 +1173,39 @@
                 svgExport.setAttribute('width', finalWidth);
                 svgExport.setAttribute('height', finalHeight);
 
-                // 7. ESTILOS INYECTADOS                
                 const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
                 style.textContent = `
                     text { 
                         font-family: "Segoe UI", sans-serif;
                         
-                        /* 1. Texto oscuro (casi negro) para que se lea en papel/fondo blanco */
+                        /* 1. Dark text (almost black) for readability on paper/white background */
                         fill: #111111;
-                        font-weight: 600; /* Un poco de negrita ayuda */
+                        font-weight: 600; /* A bit of bold helps */
 
-                        /* 2. El TRUCO DEL HALO: Borde blanco grueso */
+                        /* 2. THE HALO TRICK: Thick white border */
                         stroke: #ffffff;
                         stroke-width: 3px;
-                        stroke-linejoin: round; /* Bordes redondeados para que no haya picos */
+                        stroke-linejoin: round; /* Rounded borders to avoid spikes */
                         
-                        /* 3. MÁGIA: Dibuja el borde DETRÁS del relleno del texto */
-                        /* Si no pones esto, el borde tapará la letra fina */
+                        /* 3. MAGIC: Draw the border BEHIND the text fill */
+                        /* Without this, the border will cover the thin letter */
                         paint-order: stroke fill;
                         
-                        /* Renderizado nítido */
+                        /* Sharp rendering */
                         text-rendering: geometricPrecision; 
                         -webkit-font-smoothing: antialiased;
                     }
 
-                    /* Mantenemos el color oscuro para las líneas/bordes de los nodos */
+                    /* Keep dark color for node lines/borders */
                     .joint-element { 
                         fill: #252526; 
                     }
                     
-                    /* Ocultar elementos display:none */
+                    /* Hide elements with display:none */
                     [display="none"] { visibility: hidden; } 
                 `;
                 svgExport.insertBefore(style, svgExport.firstChild);
 
-                // 8. RENDERIZADO
                 const serializer = new XMLSerializer();
                 const svgString = serializer.serializeToString(svgExport);
                 const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
@@ -1370,13 +1218,6 @@
                     canvas.height = finalHeight;
                     const ctx = canvas.getContext('2d');
 
-                    // --- IMPORTANTE: FONDO DEL PNG ---
-                    // Si quieres que sea REALMENTE transparente, comenta las líneas fillStyle y fillRect.
-                    // Si quieres un fondo solido oscuro detrás de los nodos transparentes, déjalas.
-                    
-                    // ctx.fillStyle = '#1e1e1e'; 
-                    // ctx.fillRect(0, 0, canvas.width, canvas.height);
-
                     ctx.imageSmoothingEnabled = true;
                     ctx.imageSmoothingQuality = 'high';
 
@@ -1387,23 +1228,16 @@
                 };
                 img.src = url;
 
-            } catch (error) { console.error("Error exportando PNG:", error); }
+            } catch (error) { console.error("Error exporting PNG:", error); }
         });
 
 
-        // =================================================================
-        // 6. MINIMAPA (Corregido: Click en stacks y navegación inmediata)
-        // =================================================================
-        
         window._minimapPreview = null;
 
-        // 1. Lógica de Movimiento (Usamos mousedown para respuesta inmediata)
         function handleMinimapNavigation(e) {
             e.stopPropagation(); 
             e.preventDefault();
             
-            // Obtener el rectángulo del contenedor #minimap
-            // Usamos e.currentTarget para asegurarnos de referirnos al contenedor, no a hijos
             const rect = e.currentTarget.getBoundingClientRect();
             
             const mx = e.clientX - rect.left - 10; 
@@ -1412,7 +1246,6 @@
             const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
             const areaH = GRAPH_AREA.maxY - GRAPH_AREA.minY;
             
-            // Evitar división por cero
             if (areaW === 0 || areaH === 0) return;
 
             const scaleX = 200 / areaW;
@@ -1424,21 +1257,18 @@
             const logicalW = paperRect.width / targetScale;
             const logicalH = paperRect.height / targetScale;
 
-            // Centrar vista en el punto presionado
             const targetLogicalX = (mx / scaleX) + GRAPH_AREA.minX - (logicalW / 2);
             const targetLogicalY = (my / scaleY) + GRAPH_AREA.minY - (logicalH / 2);
 
             paper.translate(-targetLogicalX * targetScale, -targetLogicalY * targetScale);
         }
 
-        // Asignamos la lógica al mousedown (click inmediato)
         $('#minimap').on('mousedown', handleMinimapNavigation);
 
-        // Preview al mover el ratón
         $('#minimap').on('mousemove', function(e) {
             e.stopPropagation(); 
             e.preventDefault();
-            $(this).css('cursor', 'crosshair'); // Cursor más preciso
+            $(this).css('cursor', 'crosshair');
             const rect = this.getBoundingClientRect();
             window._minimapPreview = { 
                 mx: e.clientX - rect.left - 10, 
@@ -1451,12 +1281,10 @@
             window._minimapPreview = null;
         });
 
-        // Función de Renderizado (Con pointer-events: none)
         function renderMinimap() {
             const svg = document.getElementById('minimap-svg');
             if (!svg) return;
             
-            // Limpiar todo excepto si quisiéramos mantener algo (aquí borramos todo)
             while (svg.firstChild) svg.removeChild(svg.firstChild);
 
             const areaW = GRAPH_AREA.maxX - GRAPH_AREA.minX;
@@ -1464,17 +1292,14 @@
             const scaleX = 200 / areaW;
             const scaleY = 120 / areaH;
 
-            // --- A. BORDE ---
             const border = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             border.setAttribute('x', 10); border.setAttribute('y', 10);
             border.setAttribute('width', 200); border.setAttribute('height', 120);
             border.setAttribute('stroke', '#4fc3f7'); border.setAttribute('stroke-width', '2');
             border.setAttribute('fill', 'none');
-            // CLAVE: Ignorar clicks en el borde
             border.setAttribute('pointer-events', 'none'); 
             svg.appendChild(border);
 
-            // --- B. STACKS ---
             stackElements.forEach((stack, idx) => {
                 if (stack.get('hidden')) return;
                 const bbox = stack.getBBox();
@@ -1490,13 +1315,11 @@
                 rect.setAttribute('fill', color);
                 rect.setAttribute('fill-opacity', '0.7');
                 
-                // CLAVE: Ignorar clicks en los stacks para que pasen al fondo
                 rect.setAttribute('pointer-events', 'none'); 
                 
                 svg.appendChild(rect);
             });
 
-            // --- C. VIEWPORT (Caja azul) ---
             const paperRect = paper.el.getBoundingClientRect();
             const scale = paper.scale().sx;
             const tr = paper.translate();
@@ -1516,12 +1339,10 @@
             viewRect.setAttribute('fill', '#4fc3f7'); viewRect.setAttribute('fill-opacity', '0.15');
             viewRect.setAttribute('stroke', '#4fc3f7'); viewRect.setAttribute('stroke-width', '2');
             
-            // CLAVE: Ignorar clicks en el viewport
             viewRect.setAttribute('pointer-events', 'none');
             
             svg.appendChild(viewRect);
 
-            // --- D. PREVIEW (Caja blanca) ---
             if (window._minimapPreview) {
                 const { mx, my } = window._minimapPreview;
                 const previewLogicalX = mx / scaleX + GRAPH_AREA.minX - logicalW / 2;
@@ -1535,7 +1356,6 @@
                 previewRect.setAttribute('fill', '#fff'); previewRect.setAttribute('fill-opacity', '0.10');
                 previewRect.setAttribute('stroke', '#fff'); previewRect.setAttribute('stroke-width', '2');
                 
-                // CLAVE: Ignorar clicks en el preview
                 previewRect.setAttribute('pointer-events', 'none');
                 
                 svg.appendChild(previewRect);
@@ -1547,10 +1367,9 @@
             requestAnimationFrame(minimapLoop);
         }
         
-        // Iniciar Minimapa
         minimapLoop();
 
-    }); // Fin del document.ready
+    });
 </script>
 </body>
 </html>
