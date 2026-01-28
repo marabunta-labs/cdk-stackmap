@@ -132,6 +132,14 @@
             <div id="stack-list"></div>
         </div>
 
+        <div class="ui-section-header" id="filters-header">
+            <span>Filtros por Tipo</span>
+            <span class="arrow">▼</span>
+        </div>
+        <div class="ui-section-content" id="filters-content">
+            <div id="filter-list" style="padding: 10px;"></div>
+        </div>
+
         <div class="ui-section-header" id="download-header">
             <span>Descargar</span>
             <span class="arrow">▼</span>
@@ -158,8 +166,21 @@
     // =================================================================
     const vscode = acquireVsCodeApi(); 
 
+    // 1. Definición inicial basada en config inyectada
+    const conf = window.__USER_CONFIG__ || {};
+    const initialW = conf.graphAreaWidth || 10000;
+    const initialH = conf.graphAreaHeight || 6000;
+
+    // Calculamos coordenadas centradas en 0,0
+    let GRAPH_AREA = { 
+        minX: -initialW / 2, 
+        minY: -initialH / 2, 
+        maxX: initialW / 2, 
+        maxY: initialH / 2 
+    };
+
     // Definir área del grafo GLOBAL para que todos la vean
-    const GRAPH_AREA = { minX: -5000, minY: -3000, maxX: 5000, maxY: 3000 };
+    //const GRAPH_AREA = { minX: -5000, minY: -3000, maxX: 5000, maxY: 3000 };
 
     function clampPosition(x, y, width, height) {
         const clampedX = Math.max(GRAPH_AREA.minX, Math.min(x, GRAPH_AREA.maxX - width));
@@ -202,6 +223,24 @@
                             res._cell.attr('body/strokeWidth', 1);
                         }
                     });
+                }
+                if (typeof message.config.graphAreaWidth === 'number' || typeof message.config.graphAreaHeight === 'number') {
+                    const w = message.config.graphAreaWidth || (GRAPH_AREA.maxX - GRAPH_AREA.minX);
+                    const h = message.config.graphAreaHeight || (GRAPH_AREA.maxY - GRAPH_AREA.minY);
+                    
+                    GRAPH_AREA = {
+                        minX: -w / 2, 
+                        minY: -h / 2, 
+                        maxX: w / 2, 
+                        maxY: h / 2 
+                    };
+
+                    // IMPORTANTE: Actualizar el borde visual (rectángulo azul)
+                    // Asumiendo que guardaste la referencia a 'areaBorder' en una variable global o accesible
+                    if (typeof areaBorder !== 'undefined') {
+                        areaBorder.position(GRAPH_AREA.minX, GRAPH_AREA.minY);
+                        areaBorder.resize(w, h);
+                    }
                 }
                 window.__USER_CONFIG__ = Object.assign({}, window.__USER_CONFIG__, message.config);
             }
@@ -326,7 +365,7 @@
             updateCounter();
         });
 
-        // --- TOOLTIP ---
+        // --- TOOLTIP MEJORADO ---
         const tooltip = $('<div id="graph-tooltip"></div>').css({
             position: 'fixed', pointerEvents: 'none', zIndex: 9999,
             background: 'rgba(30,30,30,0.97)', color: '#fff',
@@ -340,26 +379,67 @@
         function showTooltip(html, x, y) { tooltip.html(html).css({ left: x + 16, top: y + 16, display: 'block' }); }
         function hideTooltip() { tooltip.hide(); }
 
+        // Función auxiliar para limpiar nombres (ID y Stacks)
+        function cleanName(text) {
+            if (!text) return '';
+            return text
+                .replace(/_\d+$/, '')           // Quita sufijos numéricos (ej: _308, _179)
+                .replace(/[A-Fa-f0-9]{8}$/, '') // Quita hashes de 8 chars (ej: C8295D)
+                .replace(/_[A-Za-z0-9]+$/, ''); // Quita sufijos mixtos con guion bajo
+        }
+
         paper.on('element:mouseenter', function (cellView, evt) {
             const model = cellView.model;
+            // Ignoramos el tooltip para la caja contenedora del Stack
             if (model.get('type') === 'stack') return;
+
             let info = '';
-            if (model.attributes.data && model.attributes.data.type) info += `<b>Tipo:</b> ${model.attributes.data.type}`;
-            if (model.attributes.data && model.attributes.data.id) info += `\n<b>ID:</b> ${model.attributes.data.id}`;
-            if (model.attributes.data && model.attributes.data.parent) info += `\n<b>Stack:</b> ${model.attributes.data.parent}`;
+            
+            // 1. Tipo de Recurso
+            if (model.attributes.data && model.attributes.data.type) {
+                // Quitamos el prefijo 'AWS::' para que sea más limpio
+                const shortType = model.attributes.data.type.replace(/^AWS::\w+::/, '');
+                info += `<b>Tipo:</b> ${shortType}`;
+            }
+
+            // 2. ID (Limpiamos el nombre aquí)
+            if (model.attributes.data && model.attributes.data.id) {
+                const cleanId = cleanName(model.attributes.data.id);
+                info += `\n<b>ID:</b> ${cleanId}`;
+            }
+
+            // 3. Stack Padre (Limpiamos el nombre aquí también)
+            if (model.attributes.data && model.attributes.data.parent) {
+                const cleanParent = cleanName(model.attributes.data.parent);
+                info += `\n<b>Stack:</b> ${cleanParent}`;
+            }
+
             showTooltip(info, evt.clientX, evt.clientY);
         });
+
         paper.on('element:mousemove', (cellView, evt) => showTooltip(tooltip.html(), evt.clientX, evt.clientY));
         paper.on('element:mouseleave', hideTooltip);
 
+        // También aplicamos la limpieza a los ENLACES (flechas)
         paper.on('link:mouseenter', function (linkView, evt) {
             const model = linkView.model;
             let info = `<b>Conexión</b>`;
+            
             const sourceId = model.source() && model.source().id;
             const targetId = model.target() && model.target().id;
-            let sourceLabel = sourceId, targetLabel = targetId;
-            if (sourceId) { const s = model.graph.getCell(sourceId); if(s && s.attributes.data) sourceLabel = s.attributes.data.label; }
-            if (targetId) { const t = model.graph.getCell(targetId); if(t && t.attributes.data) targetLabel = t.attributes.data.label; }
+            
+            let sourceLabel = '?', targetLabel = '?';
+
+            // Buscar etiquetas reales y limpiarlas
+            if (sourceId) { 
+                const s = model.graph.getCell(sourceId); 
+                if(s && s.attributes.data) sourceLabel = cleanName(s.attributes.data.label || s.attributes.data.id); 
+            }
+            if (targetId) { 
+                const t = model.graph.getCell(targetId); 
+                if(t && t.attributes.data) targetLabel = cleanName(t.attributes.data.label || t.attributes.data.id); 
+            }
+
             info += `\n<b>Origen:</b> ${sourceLabel}\n<b>Destino:</b> ${targetLabel}`;
             showTooltip(info, evt.clientX, evt.clientY);
         });
@@ -367,39 +447,165 @@
         paper.on('link:mouseleave', hideTooltip);
 
 
+        // =========================================================
+        // DEFINICIÓN DE CATEGORÍAS (Para Colores y Filtros)
+        // =========================================================
+        const RESOURCE_CATEGORIES = {
+            'Compute': {
+                color: '#FF9900',
+                types: ['Function', 'Instance', 'AutoScalingGroup', 'LaunchConfiguration', 'ECSCluster', 'TaskDefinition', 'Service', 'StateMachine', 'BatchJobDefinition', 'BatchJobQueue']
+            },
+            'Storage': {
+                color: '#3F8624',
+                types: ['Bucket', 'FileSystem', 'Volume', 'BackupVault', 'StorageLens']
+            },
+            'Database': {
+                color: '#3355DA',
+                types: ['Table', 'DBInstance', 'DBCluster', 'DBSubnetGroup', 'GlobalTable', 'ReplicationGroup', 'CacheCluster']
+            },
+            'Networking': {
+                color: '#8A2BE2',
+                types: ['VPC', 'Subnet', 'RouteTable', 'InternetGateway', 'NatGateway', 'SecurityGroup', 'NetworkAcl', 'VPCEndpoint', 'LoadBalancer', 'Listener']
+            },
+            'Security': {
+                color: '#D13212',
+                types: ['Role', 'User', 'Group', 'Policy', 'ManagedPolicy', 'AccessKey', 'Secret', 'Key']
+            },
+            'Management': {
+                color: '#E03088',
+                types: ['Stack', 'Parameter', 'Alarm', 'Dashboard', 'LogGroup', 'LogStream', 'EventRule', 'Trail', 'ConfigRule']
+            },
+            'Integration': {
+                color: '#D9A741',
+                types: ['Queue', 'Topic', 'Subscription', 'EventBus', 'Api', 'Connection', 'Integration']
+            },
+            'Analytics': {
+                color: '#9C27B0',
+                types: ['Stream', 'DeliveryStream', 'Dataset', 'Crawler', 'Job', 'WorkGroup']
+            },
+            'Otros': {
+                color: '#666666',
+                types: [] // Aquí caerá todo lo demás
+            }
+        };
+
+        function buildFilterUI() {
+            const container = $('#filter-list');
+            container.empty();
+
+            // 1. Identificar qué tipos existen en el grafo actual
+            const existingTypes = new Set();
+            window.resources.forEach(res => {
+                const t = res.data.type.replace(/^AWS::[\w]+::/, '');
+                existingTypes.add(t);
+            });
+
+            // 2. Agrupar por Categoría
+            const groups = {};
+            existingTypes.forEach(type => {
+                let foundCat = 'Otros';
+                for (const [catName, catData] of Object.entries(RESOURCE_CATEGORIES)) {
+                    if (catData.types.includes(type)) {
+                        foundCat = catName;
+                        break;
+                    }
+                }
+                if (!groups[foundCat]) groups[foundCat] = [];
+                groups[foundCat].push(type);
+            });
+
+            // 3. Renderizar HTML (Acordeones anidados o Títulos simples)
+            // Usaremos títulos pequeños para separar categorías
+            Object.keys(groups).forEach(catName => {
+                const types = groups[catName];
+                if (types.length === 0) return;
+
+                // Título de Categoría
+                const catHeader = $(`<div style="font-weight:bold; color:${RESOURCE_CATEGORIES[catName].color}; margin-top:8px; margin-bottom:4px; font-size:11px; text-transform:uppercase;">${catName}</div>`);
+                container.append(catHeader);
+
+                // Checkboxes para cada tipo
+                types.forEach(type => {
+                    const row = $(`
+                        <div class="filter-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; padding-left:8px;">
+                            <input type="checkbox" class="type-filter-cb" data-type="${type}" checked>
+                            <span style="font-size:12px; color:#bbb;">${type}</span>
+                        </div>
+                    `);
+                    container.append(row);
+                });
+            });
+
+            // 4. Lógica de Filtrado
+            $('.type-filter-cb').on('change', function() {
+                const typeToToggle = $(this).data('type');
+                const isVisible = $(this).is(':checked');
+
+                // Filtrar recursos
+                window.resources.forEach(res => {
+                    const t = res.data.type.replace(/^AWS::[\w]+::/, '');
+                    if (t === typeToToggle && res._cell) {
+                        
+                        // Ocultar/Mostrar celda
+                        const display = isVisible ? 'block' : 'none';
+                        res._cell.attr('./display', display);
+                        res._cell.set('hidden', !isVisible);
+
+                        // Actualizar enlaces conectados
+                        const links = graph.getConnectedLinks(res._cell);
+                        links.forEach(link => {
+                            if (!isVisible) {
+                                link.attr('./display', 'none');
+                            } else {
+                                // Solo mostramos el link si AMBOS extremos son visibles
+                                const sId = link.source().id;
+                                const tId = link.target().id;
+                                const sCell = graph.getCell(sId);
+                                const tCell = graph.getCell(tId);
+                                
+                                // Chequeo de seguridad por si es un stack lo que está al otro lado
+                                const sHidden = sCell.get('hidden');
+                                const tHidden = tCell.get('hidden');
+
+                                if (!sHidden && !tHidden) {
+                                    link.attr('./display', 'block');
+                                }
+                            }
+                        });
+                    }
+                });
+                stackElements.forEach(stack => {
+                    updateStackLayout(stack);
+                });
+            });
+        }
+
+        // LLAMAR A LA FUNCIÓN AL INICIAR
+        buildFilterUI();
+
         // --- CONSTRUCCIÓN DEL GRAFO ---
         const areaCenterX = (GRAPH_AREA.minX + GRAPH_AREA.maxX) / 2;
         const areaCenterY = (GRAPH_AREA.minY + GRAPH_AREA.maxY) / 2;
         const stacksPerRow = Math.ceil(Math.sqrt(stacks.length));
-        const STACK_X_SPACING = 480;
-        const STACK_Y_SPACING = 420;
+        const STACK_X_SPACING = 800;
+        const STACK_Y_SPACING = 200;
         const gridWidth = stacksPerRow * STACK_X_SPACING;
         const gridHeight = Math.ceil(stacks.length / stacksPerRow) * STACK_Y_SPACING;
         const startX = areaCenterX - gridWidth / 2;
         let startY = areaCenterY - gridHeight / 2;
 
-        function getResourceColor(type) {
-            window.getResourceColor = getResourceColor;
-            if (!type) return '#333';
-            const compute = ['Function', 'Instance', 'AutoScalingGroup', 'LaunchConfiguration', 'ECSCluster', 'TaskDefinition', 'Service', 'StateMachine', 'BatchJobDefinition', 'BatchJobQueue'];
-            const storage = ['Bucket', 'FileSystem', 'Volume', 'BackupVault', 'StorageLens'];
-            const database = ['Table', 'DBInstance', 'DBCluster', 'DBSubnetGroup', 'GlobalTable', 'ReplicationGroup', 'CacheCluster'];
-            const networking = ['VPC', 'Subnet', 'RouteTable', 'InternetGateway', 'NatGateway', 'SecurityGroup', 'NetworkAcl', 'VPCEndpoint', 'LoadBalancer', 'Listener'];
-            const security = ['Role', 'User', 'Group', 'Policy', 'ManagedPolicy', 'AccessKey', 'Secret', 'Key'];
-            const management = ['Stack', 'Parameter', 'Alarm', 'Dashboard', 'LogGroup', 'LogStream', 'EventRule', 'Trail', 'ConfigRule'];
-            const appIntegration = ['Queue', 'Topic', 'Subscription', 'EventBus', 'Api', 'Connection', 'Integration'];
-            const analytics = ['Stream', 'DeliveryStream', 'Dataset', 'Crawler', 'Job', 'Table', 'WorkGroup'];
-            const t = type.replace(/^AWS::[\w]+::/, '');
-            if (compute.includes(t)) return '#FF9900';
-            if (storage.includes(t)) return '#3F8624';
-            if (database.includes(t)) return '#3355DA';
-            if (networking.includes(t)) return '#8A2BE2';
-            if (security.includes(t)) return '#D13212';
-            if (management.includes(t)) return '#E03088';
-            if (appIntegration.includes(t)) return '#D9A741';
-            if (analytics.includes(t)) return '#8A2BE2';
-            return '#666';
+
+        // Nueva función getResourceColor optimizada
+        function getResourceColor(fullType) {
+            if (!fullType) return '#333';
+            const shortType = fullType.replace(/^AWS::[\w]+::/, '');
+            
+            for (const [catName, catData] of Object.entries(RESOURCE_CATEGORIES)) {
+                if (catData.types.includes(shortType)) return catData.color;
+            }
+            return RESOURCE_CATEGORIES['Otros'].color;
         }
+        window.getResourceColor = getResourceColor; // Exponer para configuraciones
 
         stacks.forEach((stackData, i) => {
             const col = i % stacksPerRow;
@@ -438,13 +644,13 @@
             stackElements.push(stack);
 
             const childResources = resources.filter(r => r.data.parent === stackData.data.id);
-            const resWidth = 90, resHeight = 28;
+            const resWidth = 160, resHeight = 36;
             // Ajustamos el centro vertical (cy) para considerar el nuevo header
             const cx = x + width / 2 - resWidth / 2;
             const cy = y + headerH + (height - headerH - 20) / 2 - resHeight / 2;
             
-            const spiralStep = 18;
-            const spiralAngleStep = Math.PI / 5;
+            const spiralStep = 40;
+            const spiralAngleStep = Math.PI / 7;
 
             childResources.forEach((res, idx) => {
                 const resNode = new joint.shapes.standard.Rectangle();
@@ -463,7 +669,7 @@
                 }
                 resNode.attr({
                     body: getBodyAttrs(),
-                    label: { text: res.data.label, fill: '#fff', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 80, ellipsis: true } }
+                    label: { text: res.data.label, fill: '#fff', fontSize: 10, fontFamily: 'Segoe UI', cursor: 'pointer', textWrap: { width: 150, height: 30, ellipsis: true } }
                 });
                 resNode.set('data', res.data);
                 stack.embed(resNode);
@@ -562,6 +768,67 @@
             dragStartStackPos = null;
         });
 
+        // Constantes de tamaño mínimo (Cabecera + un poquito de cuerpo)
+        const MIN_STACK_WIDTH = 240;
+        const MIN_STACK_HEIGHT = 60; // Altura justa para el Header y poco más
+
+        // REEMPLAZAR LA FUNCIÓN updateStackLayout ENTERA POR ESTA:
+        function updateStackLayout(stack) {
+            if (!stack || stack.get('hidden')) return;
+
+            // 1. Filtrar solo visibles
+            const visibleEmbeds = stack.getEmbeddedCells().filter(c => !c.get('hidden'));
+
+            // CASO A: Stack vacío (o todo oculto) -> Tamaño mínimo
+            if (visibleEmbeds.length === 0) {
+                const currentSize = stack.size();
+                // Solo redimensionar si es necesario para evitar parpadeo
+                if (currentSize.width !== 240 || currentSize.height !== 60) {
+                    stack.resize(240, 60);
+                }
+                return;
+            }
+
+            // CASO B: Hay contenido visible -> Ajuste manual ("Manual fitEmbeds")
+            
+            // 1. Calcular BBox de los hijos visibles
+            const bbox = graph.getCellsBBox(visibleEmbeds);
+            
+            // Padding deseado
+            const padding = { top: STACK_HEADER_HEIGHT + 20, bottom: 20, left: 20, right: 20 };
+            
+            // Calcular nueva geometría del Stack
+            const newX = bbox.x - padding.left;
+            const newY = bbox.y - padding.top;
+            const newW = bbox.width + padding.left + padding.right;
+            const newH = bbox.height + padding.top + padding.bottom;
+            
+            // 2. Aplicar Tamaño
+            stack.resize(newW, newH);
+            
+            // 3. Aplicar Posición (Con truco de compensación)
+            const currentPos = stack.position();
+            const dx = newX - currentPos.x;
+            const dy = newY - currentPos.y;
+            
+            // Si la diferencia es muy pequeña, ignoramos para ahorrar CPU
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+            // Movemos el Stack (esto arrastra a TODOS los hijos, visibles y ocultos)
+            stack.translate(dx, dy);
+            
+            // IMPORTANTE: Movemos los hijos VISIBLES hacia atrás (-dx, -dy)
+            // Resultado: Los nodos visibles se quedan quietos en pantalla, 
+            // y el Stack parece haberse movido debajo de ellos para abrazarlos.
+            visibleEmbeds.forEach(child => {
+                child.translate(-dx, -dy);
+            });
+
+            // NOTA: Los nodos OCULTOS se habrán movido con el stack (dx, dy).
+            // Esto es positivo: cuando los vuelvas a mostrar, estarán más cerca 
+            // del grupo actual en lugar de quedarse rezagados.
+        }
+
         // --- SISTEMA DE FÍSICAS (CÓDIGO EXACTO PROVISTO) ---
         function physicsLoop() {
             resolveInternalPhysics();
@@ -573,9 +840,9 @@
             let anyMoved = false;
             // AJUSTES DE FÍSICA ORIGINALES
             const REPULSION_DIST = 450;
-            const REPULSION_STR = 80.0;
+            const REPULSION_STR = 300.0;
             const ATTRACTION_DIST = 130;
-            const ATTRACTION_STR = 0.02;
+            const ATTRACTION_STR = 0.09;
             const CENTER_PULL = 0.035;
             const COLLISION_PADDING = 30;
             const DAMPING = 0.5;
@@ -584,24 +851,38 @@
 
             stackElements.forEach(stack => {
                 if (stack.get('hidden')) return;
-                const children = stack.getEmbeddedCells();
-                if (children.length === 0) return;
+                
+                // FILTRO CRÍTICO: Solo nodos visibles para calcular el centro de masas
+                const allChildren = stack.getEmbeddedCells();
+                const visibleChildren = allChildren.filter(c => !c.get('hidden'));
+                
+                if (visibleChildren.length === 0) {
+                    // Si no hay nodos visibles, actualizamos el layout (encoger stack) y salimos
+                    updateStackLayout(stack);
+                    return;
+                }
 
                 let cx = 0, cy = 0;
-                children.forEach(c => { const pt = c.getBBox().center(); cx += pt.x; cy += pt.y; });
-                cx /= children.length; cy /= children.length;
+                visibleChildren.forEach(c => { const pt = c.getBBox().center(); cx += pt.x; cy += pt.y; });
+                cx /= visibleChildren.length; cy /= visibleChildren.length;
 
                 let stackMoved = false;
 
-                for (let i = 0; i < children.length; i++) {
-                    const nodeA = children[i];
+                // Bucle PRINCIPAL: Solo iteramos sobre nodos VISIBLES
+                for (let i = 0; i < visibleChildren.length; i++) {
+                    const nodeA = visibleChildren[i];
+                    // (El chequeo nodeA.hidden ya no hace falta porque iteramos visibleChildren)
                     if (nodeA.id === draggedElementId) continue;
                     let fx = 0, fy = 0;
                     const aCenter = nodeA.getBBox().center();
 
-                    for (let j = 0; j < children.length; j++) {
+                    // 1. REPULSIÓN (Solo contra otros visibles)
+                    for (let j = 0; j < visibleChildren.length; j++) {
                         if (i === j) continue;
-                        const nodeB = children[j];
+                        const nodeB = visibleChildren[j];
+                        
+                        // CRÍTICO: Si nodeB estuviera oculto, no entraría aquí, así que arreglado.
+                        
                         const bCenter = nodeB.getBBox().center();
                         let dx = aCenter.x - bCenter.x;
                         let dy = aCenter.y - bCenter.y;
@@ -616,15 +897,20 @@
                         }
                     }
 
+                    // 2. ATRACCIÓN POR ENLACES (Solo si el otro extremo es visible)
                     const connectedLinks = graph.getConnectedLinks(nodeA);
                     connectedLinks.forEach(link => {
+                        // Si el link está oculto, ignorar fuerzas
+                        if (link.attr('./display') === 'none') return;
+
                         const sourceId = link.source().id;
                         const targetId = link.target().id;
                         let otherNode = null;
                         if (sourceId === nodeA.id && targetId) otherNode = graph.getCell(targetId);
                         else if (targetId === nodeA.id && sourceId) otherNode = graph.getCell(sourceId);
 
-                        if (otherNode && children.includes(otherNode)) {
+                        // CRÍTICO: Verificar que el otro nodo sea visible y esté en este stack
+                        if (otherNode && visibleChildren.includes(otherNode) && !otherNode.get('hidden')) {
                             const otherCenter = otherNode.getBBox().center();
                             let dx = otherCenter.x - aCenter.x;
                             let dy = otherCenter.y - aCenter.y;
@@ -638,8 +924,11 @@
                         }
                     });
 
+                    // 3. CENTER PULL
                     fx += (cx - aCenter.x) * CENTER_PULL;
                     fy += (cy - aCenter.y) * CENTER_PULL;
+
+                    // Integración
                     fx *= DAMPING; fy *= DAMPING;
                     const speed = Math.sqrt(fx * fx + fy * fy);
                     if (speed > MAX_SPEED) { fx = (fx / speed) * MAX_SPEED; fy = (fy / speed) * MAX_SPEED; }
@@ -648,22 +937,22 @@
 
                     if (fx !== 0 || fy !== 0) {
                         nodeA.translate(fx, fy);
-                        const bbox = nodeA.getBBox();
-                        const clamped = clampPosition(bbox.x, bbox.y, bbox.width, bbox.height);
-                        nodeA.position(clamped.x, clamped.y);
                         stackMoved = true;
                     }
                 }
 
+                // COLISIONES (Evitar solapamiento visual, solo entre visibles)
                 const pad = COLLISION_PADDING;
-                for (let i = 0; i < children.length; i++) {
-                    const childA = children[i];
-                    for (let j = i + 1; j < children.length; j++) {
-                        const childB = children[j];
+                for (let i = 0; i < visibleChildren.length; i++) {
+                    const childA = visibleChildren[i];
+                    for (let j = i + 1; j < visibleChildren.length; j++) {
+                        const childB = visibleChildren[j];
                         const bA = childA.getBBox();
                         const bB = childB.getBBox();
                         if (bA.x < bB.x + bB.width + pad && bA.x + bA.width + pad > bB.x &&
                             bA.y < bB.y + bB.height + pad && bA.y + bA.height + pad > bB.y) {
+                            
+                            // Lógica simple de separación
                             const cA = bA.center();
                             const cB = bB.center();
                             let dx = cA.x - cB.x; let dy = cA.y - cB.y;
@@ -672,8 +961,10 @@
                             const penY = (bA.height / 2 + bB.height / 2 + pad) - Math.abs(dy);
                             let mx = 0, my = 0;
                             if (penX < penY) mx = penX * (dx > 0 ? 1 : -1); else my = penY * (dy > 0 ? 1 : -1);
+                            
                             const aDrag = childA.id === draggedElementId;
                             const bDrag = childB.id === draggedElementId;
+                            
                             if (aDrag) childB.translate(-mx, -my);
                             else if (bDrag) childA.translate(mx, my);
                             else { childA.translate(mx * 0.5, my * 0.5); childB.translate(-mx * 0.5, -my * 0.5); }
@@ -681,37 +972,13 @@
                         }
                     }
                 }
-                if (stackMoved) {
-                    stack.fitEmbeds({ 
-                        padding: { 
-                            top: STACK_HEADER_HEIGHT + 10, 
-                            bottom: 20, 
-                            left: 20, 
-                            right: 20 
-                        } 
-                    });
-                    anyMoved = true;
-                }
+
+                // AL FINAL: Recalcular tamaño del Stack para ajustarse a los VISIBLES
+                updateStackLayout(stack);
+
+                if (stackMoved) anyMoved = true;
             });
 
-            stackElements.forEach(stack => {
-                if (stack.get('hidden')) return;
-                const bbox = stack.getBBox();
-                // PADDING PARA EL CLAMP DE SEGURIDAD (Coincide con fitEmbeds)
-                const topPad = STACK_HEADER_HEIGHT + 10; 
-                
-                stack.getEmbeddedCells().forEach(child => {
-                    const childBox = child.getBBox();
-                    let relX = childBox.x - bbox.x;
-                    let relY = childBox.y - bbox.y;
-                    
-                    // Aquí usamos topPad como límite mínimo
-                    relX = Math.max(20, Math.min(relX, bbox.width - childBox.width - 20));
-                    relY = Math.max(topPad, Math.min(relY, bbox.height - childBox.height - 20));
-                    
-                    child.position(bbox.x + relX, bbox.y + relY);
-                });
-            });
             return anyMoved;
         }
 

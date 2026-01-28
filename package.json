@@ -91,6 +91,20 @@
           ],
           "default": "fill",
           "description": "Modo de color para los nodos AWS."
+        },
+        "cdk-stackmap.graphAreaSize": {
+          "type": "string",
+          "enum": [ "XS", "S", "M", "L", "XL", "XXL" ],
+          "default": "M",
+          "description": "Tamaño del área de dibujo. Mantiene la proporción correcta para el minimapa.",
+          "enumDescriptions": [
+            "XS: Muy pequeño (3000x1800)",
+            "S: Pequeño (6000x3600)",
+            "M: Medio (9000x5400)",
+            "L: Grande (12000x7200)",
+            "XL: Extra Grande (18000x10800)",
+            "XXL: Enorme (24000x14400)"
+          ]
         }
       }
     }
