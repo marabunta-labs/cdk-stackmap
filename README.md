@@ -4,6 +4,8 @@
 
 CDK Stack Map turns your CloudFormation templates and CDK assemblies into interactive, force-directed graphs. It helps developers understand complex infrastructure relationships, debug connections, and generate documentation assets without leaving the editor.
 
+![CDK Stack Map Demo](media/cdk-stackmap.gif)
+
 ## Features
 
 ### 🚀 Interactive Visualization

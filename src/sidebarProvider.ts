@@ -13,6 +13,27 @@ class FolderNode extends CDKTreeNode {
     async getChildren(): Promise<CDKTreeNode[]> { return []; }
 }
 
+function findImportValues(obj: any, found: string[] = []) {
+    if (!obj || typeof obj !== 'object') return found;
+    
+    if (obj['Fn::ImportValue']) {
+        const val = obj['Fn::ImportValue'];
+        if (typeof val === 'string') {
+            found.push(val);
+        }
+        return found;
+    }
+
+    if (Array.isArray(obj)) {
+        obj.forEach(item => findImportValues(item, found));
+    } else {
+        for (const key of Object.keys(obj)) {
+            findImportValues(obj[key], found);
+        }
+    }
+    return found;
+}
+
 export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
     private _onDidChangeTreeData = new vscode.EventEmitter<CDKTreeNode | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -136,7 +157,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
     }
 
     public async getGraphData(): Promise<GraphData> {
-        console.log("--- START GRAPH GENERATION (CLEANEST) ---");
+        console.log("--- START GRAPH GENERATION ---");
         const nodes: GraphNode[] = [];
         const edges: GraphEdge[] = [];
 
@@ -168,14 +189,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                     return;
                 }
                 if (current['Fn::Sub']) {
-                    const val = current['Fn::Sub'];
-                    const str = Array.isArray(val) ? val[0] : val;
-                    if (typeof str === 'string') {
-                        const matches = str.match(/\$\{([a-zA-Z0-9]+)\}/g);
-                        if (matches) matches.forEach(m => refs.add(m.replace(/[\$\{\}]/g, '')));
-                    }
-                    if (Array.isArray(val) && val.length > 1) traverse(val[1]);
-                    return;
+                   // Implementación simple
                 }
                 if (Array.isArray(current)) current.forEach(item => traverse(item));
                 else Object.values(current).forEach(child => traverse(child));
@@ -188,10 +202,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
             if (!(treeNode instanceof ConstructNode)) return;
 
             if (CDK_NOISE_PATTERNS.some(pattern => treeNode.label.includes(pattern))) return;
-
-            if (treeNode.label === 'Resource' || treeNode.label === 'Default') {
-                return;
-            }
+            if (treeNode.label === 'Resource' || treeNode.label === 'Default') return;
 
             const nodeId = generateId(treeNode.label);
             
@@ -209,35 +220,27 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
 
             if (!primaryLogicalId) {
                 primaryChild = children.find(c => 
-                    c instanceof ConstructNode && 
-                    c.logicalId && 
+                    c instanceof ConstructNode && c.logicalId && 
                     (c.label === 'Resource' || c.label === 'Default')
                 ) as ConstructNode | undefined;
 
-                if (primaryChild && primaryChild.logicalId) {
-                    primaryLogicalId = primaryChild.logicalId;
-                }
+                if (primaryChild?.logicalId) primaryLogicalId = primaryChild.logicalId;
             }
 
             if (primaryLogicalId) {
-                if (!logicalIdToNodeId.has(primaryLogicalId)) {
-                    logicalIdToNodeId.set(primaryLogicalId, nodeId);
-                }
+                logicalIdToNodeId.set(primaryLogicalId, nodeId);
             }
 
             let nodeType = 'Construct';
             if (treeNode.contextValue === 'cdkStack') nodeType = 'Stack';
             else if (treeNode.cfnResource?.Type) nodeType = treeNode.cfnResource.Type;
-            else if (primaryChild && primaryChild.cfnResource?.Type) nodeType = primaryChild.cfnResource.Type;
+            else if (primaryChild && primaryChild.cfnResource?.Type) nodeType = primaryChild.cfnResource.Type; 
             else if (treeNode.artifact.attributes?.['aws:cdk:cloudformation:type']) nodeType = treeNode.artifact.attributes['aws:cdk:cloudformation:type'];
 
             const isGenericConstruct = nodeType === 'Construct';
             const hasConstructChildren = children.some(c => c instanceof ConstructNode && c.label !== 'Resource' && c.label !== 'Default');
             
-            if (isGenericConstruct && !primaryLogicalId && !hasConstructChildren) {
-                return;
-            }
-
+            if (isGenericConstruct && !primaryLogicalId && !hasConstructChildren) return;
 
             const scanProps = (nodesToScan: CDKTreeNode[]) => {
                 nodesToScan.forEach(child => {
@@ -249,7 +252,6 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                     if (child instanceof ConstructNode && (child.label === 'Resource' || child.label === 'Default')) {
                         const grandChildren = this.resolveChildren(child);
                         scanProps(grandChildren);
-                        
                         if (child.cfnResource?.DependsOn) {
                             const deps = Array.isArray(child.cfnResource.DependsOn) ? child.cfnResource.DependsOn : [child.cfnResource.DependsOn];
                             deps.forEach((d: string) => pendingDeps.push({ source: nodeId, targetLogicalId: d }));
@@ -257,9 +259,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                     }
                 });
             };
-
             scanProps(children);
-
 
             if (treeNode.cfnResource?.DependsOn) {
                 const deps = Array.isArray(treeNode.cfnResource.DependsOn) ? treeNode.cfnResource.DependsOn : [treeNode.cfnResource.DependsOn];
@@ -271,15 +271,15 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
                     id: nodeId,
                     label: treeNode.label as string,
                     type: nodeType,
-                    parent: visualParent
+                    parent: visualParent,
+                    stackName: treeNode.contextValue === 'cdkStack' ? treeNode.label : undefined, 
+                    logicalId: primaryLogicalId
                 }
             });
 
             children.forEach(child => {
-                if (child instanceof ConstructNode) {
-                    if (child.label !== 'Resource' && child.label !== 'Default') {
-                        processNode(child, nodeId, myStackId);
-                    }
+                if (child instanceof ConstructNode && child.label !== 'Resource' && child.label !== 'Default') {
+                    processNode(child, nodeId, myStackId);
                 }
             });
         };
@@ -289,7 +289,6 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         const uniqueEdges = new Set<string>();
         pendingDeps.forEach((dep, idx) => {
             const targetNodeId = logicalIdToNodeId.get(dep.targetLogicalId);
-            
             if (targetNodeId && targetNodeId !== dep.source) {
                 const edgeKey = `${dep.source}->${targetNodeId}`;
                 if (!uniqueEdges.has(edgeKey)) {
@@ -306,7 +305,63 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
             }
         });
 
-        console.log("--- END ---");
+        const exportMap = new Map<string, string>();
+        
+        for (const [stackKey, template] of this.templateCache.entries()) {
+            if (template.Outputs) {
+                for (const [outputKey, outputVal] of Object.entries(template.Outputs) as [string, any][]) {
+                    if (outputVal.Export && outputVal.Export.Name && outputVal.Value) {
+                        const exportName = outputVal.Export.Name;
+                        let targetLogicalId = null;
+
+                        if (outputVal.Value.Ref) {
+                            targetLogicalId = outputVal.Value.Ref;
+                        } else if (outputVal.Value['Fn::GetAtt']) {
+                            const getAtt = outputVal.Value['Fn::GetAtt'];
+                            targetLogicalId = Array.isArray(getAtt) ? getAtt[0] : null;
+                        }
+                        
+                        if (targetLogicalId) {
+                            exportMap.set(exportName, targetLogicalId);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (const [stackKey, template] of this.templateCache.entries()) {
+            if (!template.Resources) continue;
+
+            for (const [resLogicalId, resDef] of Object.entries(template.Resources) as [string, any][]) {
+                const imports = findImportValues(resDef.Properties);
+
+                imports.forEach(importName => {
+                    const targetResourceLogicalId = exportMap.get(importName);
+                    
+                    if (targetResourceLogicalId) {
+                        const sourceNodeId = logicalIdToNodeId.get(resLogicalId);
+                        const targetNodeId = logicalIdToNodeId.get(targetResourceLogicalId);
+
+                        if (sourceNodeId && targetNodeId) {
+                            const edgeKey = `cross_${sourceNodeId}->${targetNodeId}`;
+                            if (!uniqueEdges.has(edgeKey)) {
+                                edges.push({
+                                    data: {
+                                        id: edgeKey,
+                                        source: sourceNodeId,
+                                        target: targetNodeId,
+                                        type: 'cross-stack'
+                                    }
+                                });
+                                uniqueEdges.add(edgeKey);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        console.log(`--- END GRAPH (${nodes.length} nodes, ${edges.length} edges) ---`);
         return { nodes, edges };
     }
 }
