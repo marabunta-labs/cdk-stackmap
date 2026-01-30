@@ -2,7 +2,10 @@
   "name": "cdk-stackmap",
   "displayName": "CDK StackMap",
   "description": "Visualize AWS CDK stacks instantly.",
-  "version": "0.0.1",
+  "version": "1.0.1",
+  "publisher": "Marabunta",
+  "repository": "https://github.com/marabunta-labs/cdk-stackmap",
+  "icon": "media/logo.png",
   "engines": {
     "vscode": "^1.108.1"
   },
@@ -14,10 +17,99 @@
   "contributes": {
     "commands": [
       {
-        "command": "cdk-stackmap.helloWorld",
-        "title": "Hello World"
+        "command": "cdk-stackmap.selectFolder",
+        "title": "Select Folder",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "cdk-stackmap.visualize",
+        "title": "Visualize",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "cdk-stackmap.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cdkStackMapContainer",
+          "title": "CDK StackMap",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "cdkStackMapContainer": [
+        {
+          "id": "cdkStackMapView",
+          "name": "Explorer" 
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "cdkStackMapView",
+        "contents": "No CDK project has been selected.\nTo get started, select the root folder containing the cdk.out file.\n\n[Select CDK Folder](command:cdk-stackmap.selectFolder)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "cdk-stackmap.selectFolder",
+          "when": "view == cdkStackMapView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cdk-stackmap.visualize",
+          "when": "view == cdkStackMapView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "cdk-stackmap.refresh",
+          "when": "view == cdkStackMapView",
+          "group": "navigation@3"
+        }
+      ]
+      
+      
+    },
+    "configuration": {
+      "type": "object",
+      "title": "CDK StackMap",
+      "properties": {
+        "cdk-stackmap.showMinimap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show minimap in stack visualization."
+        },
+        "cdk-stackmap.nodeColorMode": {
+          "type": "string",
+          "enum": [
+            "fill",
+            "border"
+          ],
+          "default": "fill",
+          "description": "Color mode for AWS nodes."
+        },
+        "cdk-stackmap.graphAreaSize": {
+          "type": "string",
+          "enum": [ "XS", "S", "M", "L", "XL", "XXL" ],
+          "default": "M",
+          "description": "Drawing area size. Maintains correct aspect ratio for the minimap.",
+          "enumDescriptions": [
+            "XS: Extra Small (3000x1800)",
+            "S: Small (6000x3600)",
+            "M: Medium (9000x5400)",
+            "L: Large (12000x7200)",
+            "XL: Extra Large (18000x10800)",
+            "XXL: Huge (24000x14400)"
+          ]
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

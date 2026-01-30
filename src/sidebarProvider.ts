@@ -1,0 +1,367 @@
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import { CDKTreeNode } from './nodes/cdkTreeNode';
+import { ConstructNode, PropertyNode } from './nodes/nodes';
+import { TreeArtifact, GraphData, GraphNode, GraphEdge } from './model/cdk-models';
+
+class FolderNode extends CDKTreeNode {
+    constructor(public readonly folderName: string, public readonly folderPath: string) {
+        super(folderName, vscode.TreeItemCollapsibleState.Expanded);
+        this.iconPath = new vscode.ThemeIcon('folder-opened');
+    }
+    async getChildren(): Promise<CDKTreeNode[]> { return []; }
+}
+
+function findImportValues(obj: any, found: string[] = []) {
+    if (!obj || typeof obj !== 'object') return found;
+    
+    if (obj['Fn::ImportValue']) {
+        const val = obj['Fn::ImportValue'];
+        if (typeof val === 'string') {
+            found.push(val);
+        }
+        return found;
+    }
+
+    if (Array.isArray(obj)) {
+        obj.forEach(item => findImportValues(item, found));
+    } else {
+        for (const key of Object.keys(obj)) {
+            findImportValues(obj[key], found);
+        }
+    }
+    return found;
+}
+
+export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
+    private _onDidChangeTreeData = new vscode.EventEmitter<CDKTreeNode | undefined | void>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    
+    private templateCache = new Map<string, any>();
+    private pathLogicalIdMap = new Map<string, string>();
+    public currentRoot: string = '';
+
+    constructor(initialRoot?: string) { this.currentRoot = initialRoot || ''; }
+    setWorkspaceRoot(root: string) { this.currentRoot = root; this.clearCaches(); this.refresh(); }
+    refresh(): void { this._onDidChangeTreeData.fire(); }
+    getTreeItem(element: CDKTreeNode): vscode.TreeItem { return element; }
+    get currentPath(): string { return this.currentRoot; }
+
+    private clearCaches() {
+        this.templateCache.clear();
+        this.pathLogicalIdMap.clear();
+    }
+
+    async getChildren(element?: CDKTreeNode): Promise<CDKTreeNode[]> {
+        if (!this.currentRoot) return [];
+        if (!element) return [new FolderNode(path.basename(this.currentRoot), this.currentRoot)];
+        if (element instanceof FolderNode) return this.getStacksFromTree();
+        if (element instanceof ConstructNode) return this.resolveChildren(element);
+        if (element instanceof PropertyNode) return element.getChildren();
+        return [];
+    }
+
+    private async getStacksFromTree(): Promise<CDKTreeNode[]> {
+        const treePath = path.join(this.currentRoot, 'cdk.out', 'tree.json');
+        if (!fs.existsSync(treePath)) return [];
+        try {
+            await this.preloadTemplates();
+            const treeRaw = JSON.parse(fs.readFileSync(treePath, 'utf-8'));
+            const rootArtifact = treeRaw.tree as TreeArtifact;
+            const stacks: ConstructNode[] = [];
+            if (rootArtifact.children) {
+                for (const key in rootArtifact.children) {
+                    if (key === 'Tree') continue;
+                    stacks.push(new ConstructNode(key, rootArtifact.children[key], undefined)); 
+                }
+            }
+            return stacks.sort((a, b) => a.label.localeCompare(b.label));
+        } catch (e) { return []; }
+    }
+
+    private resolveChildren(parentNode: ConstructNode): CDKTreeNode[] {
+        const nodes: CDKTreeNode[] = [];
+        if (parentNode.cfnResource && parentNode.cfnResource.Properties) {
+             const props = parentNode.cfnResource.Properties;
+             Object.keys(props).sort().forEach(key => nodes.push(new PropertyNode(key, props[key])));
+        }
+        const parentArtifact = parentNode.artifact;
+        if (parentArtifact.children) {
+            const stackName = this.getStackNameFromPath(parentArtifact.path);
+            for (const key in parentArtifact.children) {
+                if (key === 'CDKMetadata' || key === 'Tree') continue;
+                const childArtifact = parentArtifact.children[key];
+                let cfnData = undefined;
+                let logicalId: string | undefined = undefined;
+
+                if (childArtifact.path) {
+                    const lookupPath = childArtifact.path.startsWith('/') ? childArtifact.path : `/${childArtifact.path}`;
+                    if (this.pathLogicalIdMap.has(lookupPath)) logicalId = this.pathLogicalIdMap.get(lookupPath);
+                }
+                if (!logicalId) logicalId = childArtifact.attributes?.['aws:cdk:cloudformation:elementId'];
+
+                if (stackName && this.templateCache.has(stackName)) {
+                    const template = this.templateCache.get(stackName);
+                    const resources = template.Resources || {};
+                    if (logicalId && resources[logicalId]) {
+                        cfnData = resources[logicalId];
+                    } else {
+                        const parentClean = parentNode.label.replace(/[^a-zA-Z0-9]/g, '');
+                        const isGenericName = ['Resource', 'Default', 'DefaultPolicy', 'Policy'].includes(key);
+                        const candidate = Object.keys(resources).find(rId => {
+                            const cleanId = rId.replace(/([0-9a-fA-F]{8})$/, ''); 
+                            if (cleanId === key) return true;
+                            if (cleanId.endsWith(key)) {
+                                if (isGenericName) return cleanId.includes(parentClean);
+                                return true;
+                            }
+                            return false;
+                        });
+                        if (candidate) { logicalId = candidate; cfnData = resources[candidate]; }
+                    }
+                }
+                nodes.push(new ConstructNode(key, childArtifact, cfnData, logicalId));
+            }
+        }
+        return nodes;
+    }
+
+    private async preloadTemplates() {
+        const cdkOut = path.join(this.currentRoot, 'cdk.out');
+        const manifestPath = path.join(cdkOut, 'manifest.json');
+        if (!fs.existsSync(manifestPath)) return;
+        try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            for (const key in manifest.artifacts) {
+                const art = manifest.artifacts[key];
+                if (art.type === 'aws:cloudformation:stack' && art.properties?.templateFile) {
+                    const tplPath = path.join(cdkOut, art.properties.templateFile);
+                    if (fs.existsSync(tplPath)) {
+                        this.templateCache.set(key, JSON.parse(fs.readFileSync(tplPath, 'utf-8')));
+                    }
+                }
+                if (art.metadata) {
+                    for (const pathKey in art.metadata) {
+                        const metadataList = art.metadata[pathKey];
+                        const logicalIdEntry = metadataList.find((m: any) => m.type === 'aws:cdk:logicalId');
+                        if (logicalIdEntry && logicalIdEntry.data) this.pathLogicalIdMap.set(pathKey, logicalIdEntry.data as string);
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+
+    private getStackNameFromPath(nodePath: string): string | undefined {
+        return nodePath ? nodePath.split('/')[0] : undefined;
+    }
+
+    public async getGraphData(): Promise<GraphData> {
+        console.log("--- START GRAPH GENERATION ---");
+        const nodes: GraphNode[] = [];
+        const edges: GraphEdge[] = [];
+
+        if (!this.currentRoot) return { nodes: [], edges: [] };
+        
+        await this.preloadTemplates();
+        const stacks = await this.getStacksFromTree();
+
+        const logicalIdToNodeId = new Map<string, string>(); 
+        const pendingDeps: { source: string; targetLogicalId: string }[] = [];
+
+        let idCounter = 0;
+        const generateId = (prefix: string) => `${prefix.replace(/[^a-zA-Z0-9]/g, '')}_${++idCounter}`;
+
+        const CDK_NOISE_PATTERNS = [
+            'AssetImage', 'Staging', 'S3Obj', 'Code', 'Repository', 'Parameters', 
+            'AssetParameters', 'CheckBootstrapVersion'
+        ];
+
+        const extractRefs = (obj: any): string[] => {
+            const refs = new Set<string>();
+            const traverse = (current: any) => {
+                if (!current || typeof current !== 'object') return;
+                if (current.Ref && typeof current.Ref === 'string') { refs.add(current.Ref); return; }
+                if (current['Fn::GetAtt']) {
+                    const val = current['Fn::GetAtt'];
+                    if (Array.isArray(val) && val.length > 0) refs.add(val[0]);
+                    else if (typeof val === 'string') refs.add(val.split('.')[0]);
+                    return;
+                }
+                if (current['Fn::Sub']) {
+                   // Implementación simple
+                }
+                if (Array.isArray(current)) current.forEach(item => traverse(item));
+                else Object.values(current).forEach(child => traverse(child));
+            };
+            traverse(obj);
+            return Array.from(refs);
+        };
+
+        const processNode = (treeNode: CDKTreeNode, parentId?: string, currentStackId?: string) => {
+            if (!(treeNode instanceof ConstructNode)) return;
+
+            if (CDK_NOISE_PATTERNS.some(pattern => treeNode.label.includes(pattern))) return;
+            if (treeNode.label === 'Resource' || treeNode.label === 'Default') return;
+
+            const nodeId = generateId(treeNode.label);
+            
+            let myStackId = currentStackId;
+            let visualParent = currentStackId;
+
+            if (treeNode.contextValue === 'cdkStack') {
+                myStackId = nodeId;
+                visualParent = undefined;
+            }
+
+            const children = this.resolveChildren(treeNode);
+            let primaryLogicalId = treeNode.logicalId;
+            let primaryChild: ConstructNode | undefined;
+
+            if (!primaryLogicalId) {
+                primaryChild = children.find(c => 
+                    c instanceof ConstructNode && c.logicalId && 
+                    (c.label === 'Resource' || c.label === 'Default')
+                ) as ConstructNode | undefined;
+
+                if (primaryChild?.logicalId) primaryLogicalId = primaryChild.logicalId;
+            }
+
+            if (primaryLogicalId) {
+                logicalIdToNodeId.set(primaryLogicalId, nodeId);
+            }
+
+            let nodeType = 'Construct';
+            if (treeNode.contextValue === 'cdkStack') nodeType = 'Stack';
+            else if (treeNode.cfnResource?.Type) nodeType = treeNode.cfnResource.Type;
+            else if (primaryChild && primaryChild.cfnResource?.Type) nodeType = primaryChild.cfnResource.Type; 
+            else if (treeNode.artifact.attributes?.['aws:cdk:cloudformation:type']) nodeType = treeNode.artifact.attributes['aws:cdk:cloudformation:type'];
+
+            const isGenericConstruct = nodeType === 'Construct';
+            const hasConstructChildren = children.some(c => c instanceof ConstructNode && c.label !== 'Resource' && c.label !== 'Default');
+            
+            if (isGenericConstruct && !primaryLogicalId && !hasConstructChildren) return;
+
+            const scanProps = (nodesToScan: CDKTreeNode[]) => {
+                nodesToScan.forEach(child => {
+                    if (child instanceof PropertyNode) {
+                        extractRefs(child.value).forEach(ref => {
+                            if (!ref.startsWith('AWS::')) pendingDeps.push({ source: nodeId, targetLogicalId: ref });
+                        });
+                    }
+                    if (child instanceof ConstructNode && (child.label === 'Resource' || child.label === 'Default')) {
+                        const grandChildren = this.resolveChildren(child);
+                        scanProps(grandChildren);
+                        if (child.cfnResource?.DependsOn) {
+                            const deps = Array.isArray(child.cfnResource.DependsOn) ? child.cfnResource.DependsOn : [child.cfnResource.DependsOn];
+                            deps.forEach((d: string) => pendingDeps.push({ source: nodeId, targetLogicalId: d }));
+                        }
+                    }
+                });
+            };
+            scanProps(children);
+
+            if (treeNode.cfnResource?.DependsOn) {
+                const deps = Array.isArray(treeNode.cfnResource.DependsOn) ? treeNode.cfnResource.DependsOn : [treeNode.cfnResource.DependsOn];
+                deps.forEach((d: string) => pendingDeps.push({ source: nodeId, targetLogicalId: d }));
+            }
+
+            nodes.push({
+                data: {
+                    id: nodeId,
+                    label: treeNode.label as string,
+                    type: nodeType,
+                    parent: visualParent,
+                    stackName: treeNode.contextValue === 'cdkStack' ? treeNode.label : undefined, 
+                    logicalId: primaryLogicalId
+                }
+            });
+
+            children.forEach(child => {
+                if (child instanceof ConstructNode && child.label !== 'Resource' && child.label !== 'Default') {
+                    processNode(child, nodeId, myStackId);
+                }
+            });
+        };
+
+        for (const stack of stacks) processNode(stack);
+
+        const uniqueEdges = new Set<string>();
+        pendingDeps.forEach((dep, idx) => {
+            const targetNodeId = logicalIdToNodeId.get(dep.targetLogicalId);
+            if (targetNodeId && targetNodeId !== dep.source) {
+                const edgeKey = `${dep.source}->${targetNodeId}`;
+                if (!uniqueEdges.has(edgeKey)) {
+                    edges.push({
+                        data: {
+                            id: `dep_${idx}`,
+                            source: dep.source,
+                            target: targetNodeId,
+                            type: 'dependency'
+                        }
+                    });
+                    uniqueEdges.add(edgeKey);
+                }
+            }
+        });
+
+        const exportMap = new Map<string, string>();
+        
+        for (const [stackKey, template] of this.templateCache.entries()) {
+            if (template.Outputs) {
+                for (const [outputKey, outputVal] of Object.entries(template.Outputs) as [string, any][]) {
+                    if (outputVal.Export && outputVal.Export.Name && outputVal.Value) {
+                        const exportName = outputVal.Export.Name;
+                        let targetLogicalId = null;
+
+                        if (outputVal.Value.Ref) {
+                            targetLogicalId = outputVal.Value.Ref;
+                        } else if (outputVal.Value['Fn::GetAtt']) {
+                            const getAtt = outputVal.Value['Fn::GetAtt'];
+                            targetLogicalId = Array.isArray(getAtt) ? getAtt[0] : null;
+                        }
+                        
+                        if (targetLogicalId) {
+                            exportMap.set(exportName, targetLogicalId);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (const [stackKey, template] of this.templateCache.entries()) {
+            if (!template.Resources) continue;
+
+            for (const [resLogicalId, resDef] of Object.entries(template.Resources) as [string, any][]) {
+                const imports = findImportValues(resDef.Properties);
+
+                imports.forEach(importName => {
+                    const targetResourceLogicalId = exportMap.get(importName);
+                    
+                    if (targetResourceLogicalId) {
+                        const sourceNodeId = logicalIdToNodeId.get(resLogicalId);
+                        const targetNodeId = logicalIdToNodeId.get(targetResourceLogicalId);
+
+                        if (sourceNodeId && targetNodeId) {
+                            const edgeKey = `cross_${sourceNodeId}->${targetNodeId}`;
+                            if (!uniqueEdges.has(edgeKey)) {
+                                edges.push({
+                                    data: {
+                                        id: edgeKey,
+                                        source: sourceNodeId,
+                                        target: targetNodeId,
+                                        type: 'cross-stack'
+                                    }
+                                });
+                                uniqueEdges.add(edgeKey);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        console.log(`--- END GRAPH (${nodes.length} nodes, ${edges.length} edges) ---`);
+        return { nodes, edges };
+    }
+}
