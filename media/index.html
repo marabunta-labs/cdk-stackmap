@@ -361,13 +361,12 @@
             if (!text) return '';
             return text
                 .replace(/_\d+$/, '')
-                .replace(/[A-Fa-f0-9]{8}$/, '')
-                .replace(/_[A-Za-z0-9]+$/, '');
+                .replace(/[A-Fa-f0-9]{8}$/, '');
         }
 
         paper.on('element:mouseenter', function (cellView, evt) {
             const model = cellView.model;
-            if (model.get('type') === 'stack') return;
+            if (model.get('stackName')) return;
 
             let info = '';
             
@@ -550,36 +549,15 @@
             
             graph.getLinks().forEach(link => {
                 const linkData = link.get('data');
-                
-                // Solo actuamos sobre los enlaces marcados como cross-stack
                 if (linkData && linkData.type === 'cross-stack') {
-                    
                     if (!showCrossStack) {
-                        // CASO 1: El usuario desmarca la casilla -> Ocultar SIEMPRE
                         link.attr('./display', 'none');
                     } else {
-                        // CASO 2: El usuario marca la casilla -> Mostrar SOLO SI los nodos son visibles
-                        
-                        // FORMA CORRECTA DE OBTENER LOS NODOS:
-                        const sRef = link.source();
-                        const tRef = link.target();
-                        
-                        const sId = sRef.id;
-                        const tId = tRef.id;
-                        
-                        const sCell = sId ? graph.getCell(sId) : null;
-                        const tCell = tId ? graph.getCell(tId) : null;
-                        
-                        // Si por alguna razón no encuentra la celda, asumimos oculto
+                        const sCell = link.source().id ? graph.getCell(link.source().id) : null;
+                        const tCell = link.target().id ? graph.getCell(link.target().id) : null;
                         const sHidden = sCell ? sCell.get('hidden') : true;
                         const tHidden = tCell ? tCell.get('hidden') : true;
-
-                        if (!sHidden && !tHidden) {
-                            link.attr('./display', 'block');
-                        } else {
-                            // Si los nodos están ocultos (ej: filtro de Lambdas apagado), el link sigue oculto
-                            link.attr('./display', 'none');
-                        }
+                        link.attr('./display', (!sHidden && !tHidden) ? 'block' : 'none');
                     }
                 }
             });
@@ -687,8 +665,14 @@
         edges.forEach(edge => {
             let sourceNode = resources.find(r => r.data.id === edge.data.source)?._cell;
             let targetNode = resources.find(r => r.data.id === edge.data.target)?._cell;
-            if (!sourceNode) sourceNode = stacks.find(s => s.data.id === edge.data.source)?._cell;
-            if (!targetNode) targetNode = stacks.find(s => s.data.id === edge.data.target)?._cell;
+            if (!sourceNode) {
+                const sIdx = stacks.findIndex(s => s.data.id === edge.data.source);
+                sourceNode = sIdx >= 0 ? stackElements[sIdx] : undefined;
+            }
+            if (!targetNode) {
+                const tIdx = stacks.findIndex(s => s.data.id === edge.data.target);
+                targetNode = tIdx >= 0 ? stackElements[tIdx] : undefined;
+            }
             if (sourceNode && targetNode) {
                 const link = new joint.shapes.standard.Link();
                 link.source(sourceNode);
@@ -728,6 +712,7 @@
         let dragStartStackPos = null;
 
         paper.on('element:pointerdown', (ev, x, y) => {
+            kickPhysics();
             const model = ev.model;
             const parentStack = stackElements.find(stack => stack.getEmbeddedCells().length === 1 && stack.getEmbeddedCells()[0].id === model.id);
             if (parentStack && model !== parentStack) {
@@ -770,6 +755,7 @@
             draggingSingleNodeStack = null;
             dragStartPointer = null;
             dragStartStackPos = null;
+            kickPhysics();
         });
 
         const MIN_STACK_WIDTH = 240;
@@ -812,10 +798,30 @@
             });
         }
 
+        let physicsFrameId = null;
+        let physicsSettleFrames = 0;
+        const PHYSICS_SETTLE_THRESHOLD = 60;
+
+        function kickPhysics() {
+            physicsSettleFrames = 0;
+            if (!physicsFrameId) {
+                physicsFrameId = requestAnimationFrame(physicsLoop);
+            }
+        }
+
         function physicsLoop() {
-            resolveInternalPhysics();
+            physicsFrameId = null;
+            const moved = resolveInternalPhysics();
             resolveStackCollisions();
-            requestAnimationFrame(physicsLoop);
+            if (moved) {
+                physicsSettleFrames = 0;
+                scheduleMinimapRender();
+            } else {
+                physicsSettleFrames++;
+            }
+            if (physicsSettleFrames < PHYSICS_SETTLE_THRESHOLD) {
+                physicsFrameId = requestAnimationFrame(physicsLoop);
+            }
         }
 
         function resolveInternalPhysics() {
@@ -1014,7 +1020,7 @@
             }
         }
         
-        physicsLoop();
+        physicsFrameId = requestAnimationFrame(physicsLoop);
 
 
         const zoomSpeed = 0.1;
@@ -1298,6 +1304,10 @@
                     URL.revokeObjectURL(url);
                     vscode.postMessage({ type: 'downloadPNG', data: pngData });
                 };
+                img.onerror = function () {
+                    URL.revokeObjectURL(url);
+                    console.error('Error rendering SVG to canvas for PNG export.');
+                };
                 img.src = url;
 
             } catch (error) { console.error("Error exporting PNG:", error); }
@@ -1434,12 +1444,24 @@
             }
         }
 
+        let minimapDirty = true;
+
+        function scheduleMinimapRender() {
+            minimapDirty = true;
+        }
+
         function minimapLoop() {
-            renderMinimap();
+            if (minimapDirty) {
+                renderMinimap();
+                minimapDirty = false;
+            }
             requestAnimationFrame(minimapLoop);
         }
-        
+
         minimapLoop();
+
+        paper.on('translate scale', scheduleMinimapRender);
+        graph.on('change:position change:size', scheduleMinimapRender);
 
     });
 </script>

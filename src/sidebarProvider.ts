@@ -5,6 +5,40 @@ import { CDKTreeNode } from './nodes/cdkTreeNode';
 import { ConstructNode, PropertyNode } from './nodes/nodes';
 import { TreeArtifact, GraphData, GraphNode, GraphEdge } from './model/cdk-models';
 
+const CDK_NOISE_PATTERNS = [
+    'AssetImage', 'Staging', 'S3Obj', 'Code', 'Repository', 'Parameters',
+    'AssetParameters', 'CheckBootstrapVersion'
+];
+
+function extractRefs(obj: any): string[] {
+    const refs = new Set<string>();
+    const traverse = (current: any) => {
+        if (!current || typeof current !== 'object') return;
+        if (current.Ref && typeof current.Ref === 'string') { refs.add(current.Ref); return; }
+        if (current['Fn::GetAtt']) {
+            const val = current['Fn::GetAtt'];
+            if (Array.isArray(val) && val.length > 0) refs.add(val[0]);
+            else if (typeof val === 'string') refs.add(val.split('.')[0]);
+            return;
+        }
+        if (current['Fn::Sub']) {
+            const subVal = current['Fn::Sub'];
+            const template = Array.isArray(subVal) ? subVal[0] : subVal;
+            if (typeof template === 'string') {
+                for (const m of template.matchAll(/\$\{([^.!}]+)/g)) {
+                    refs.add(m[1]);
+                }
+            }
+            if (Array.isArray(subVal) && subVal[1]) { traverse(subVal[1]); }
+            return;
+        }
+        if (Array.isArray(current)) current.forEach(item => traverse(item));
+        else Object.values(current).forEach(child => traverse(child));
+    };
+    traverse(obj);
+    return Array.from(refs);
+}
+
 class FolderNode extends CDKTreeNode {
     constructor(public readonly folderName: string, public readonly folderPath: string) {
         super(folderName, vscode.TreeItemCollapsibleState.Expanded);
@@ -67,17 +101,20 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         if (!fs.existsSync(treePath)) return [];
         try {
             await this.preloadTemplates();
-            const treeRaw = JSON.parse(fs.readFileSync(treePath, 'utf-8'));
+            const treeRaw = JSON.parse(await fs.promises.readFile(treePath, 'utf-8'));
             const rootArtifact = treeRaw.tree as TreeArtifact;
             const stacks: ConstructNode[] = [];
             if (rootArtifact.children) {
-                for (const key in rootArtifact.children) {
+                for (const key of Object.keys(rootArtifact.children)) {
                     if (key === 'Tree') continue;
-                    stacks.push(new ConstructNode(key, rootArtifact.children[key], undefined)); 
+                    stacks.push(new ConstructNode(key, rootArtifact.children[key], undefined));
                 }
             }
             return stacks.sort((a, b) => a.label.localeCompare(b.label));
-        } catch (e) { return []; }
+        } catch (e) {
+            console.error('[CDK StackMap] Failed to read tree.json:', e);
+            return [];
+        }
     }
 
     private resolveChildren(parentNode: ConstructNode): CDKTreeNode[] {
@@ -89,7 +126,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         const parentArtifact = parentNode.artifact;
         if (parentArtifact.children) {
             const stackName = this.getStackNameFromPath(parentArtifact.path);
-            for (const key in parentArtifact.children) {
+            for (const key of Object.keys(parentArtifact.children)) {
                 if (key === 'CDKMetadata' || key === 'Tree') continue;
                 const childArtifact = parentArtifact.children[key];
                 let cfnData = undefined;
@@ -132,24 +169,31 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         const manifestPath = path.join(cdkOut, 'manifest.json');
         if (!fs.existsSync(manifestPath)) return;
         try {
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-            for (const key in manifest.artifacts) {
-                const art = manifest.artifacts[key];
-                if (art.type === 'aws:cloudformation:stack' && art.properties?.templateFile) {
-                    const tplPath = path.join(cdkOut, art.properties.templateFile);
-                    if (fs.existsSync(tplPath)) {
-                        this.templateCache.set(key, JSON.parse(fs.readFileSync(tplPath, 'utf-8')));
-                    }
+            const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf-8'));
+            const stackEntries = Object.entries(manifest.artifacts as Record<string, any>)
+                .filter(([, art]) => art.type === 'aws:cloudformation:stack' && art.properties?.templateFile);
+
+            await Promise.all(stackEntries.map(async ([key, art]) => {
+                const tplPath = path.join(cdkOut, art.properties.templateFile);
+                try {
+                    const content = await fs.promises.readFile(tplPath, 'utf-8');
+                    this.templateCache.set(key, JSON.parse(content));
+                } catch {
+                    // Template file missing; skip
                 }
-                if (art.metadata) {
-                    for (const pathKey in art.metadata) {
-                        const metadataList = art.metadata[pathKey];
-                        const logicalIdEntry = metadataList.find((m: any) => m.type === 'aws:cdk:logicalId');
-                        if (logicalIdEntry && logicalIdEntry.data) this.pathLogicalIdMap.set(pathKey, logicalIdEntry.data as string);
-                    }
+            }));
+
+            for (const [, art] of Object.entries(manifest.artifacts as Record<string, any>)) {
+                if (!art.metadata) continue;
+                for (const pathKey of Object.keys(art.metadata)) {
+                    const metadataList: any[] = art.metadata[pathKey];
+                    const logicalIdEntry = metadataList.find((m) => m.type === 'aws:cdk:logicalId');
+                    if (logicalIdEntry?.data) this.pathLogicalIdMap.set(pathKey, logicalIdEntry.data as string);
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('[CDK StackMap] Failed to load CDK manifest:', e);
+        }
     }
 
     private getStackNameFromPath(nodePath: string): string | undefined {
@@ -157,7 +201,6 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
     }
 
     public async getGraphData(): Promise<GraphData> {
-        console.log("--- START GRAPH GENERATION ---");
         const nodes: GraphNode[] = [];
         const edges: GraphEdge[] = [];
 
@@ -172,31 +215,7 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
         let idCounter = 0;
         const generateId = (prefix: string) => `${prefix.replace(/[^a-zA-Z0-9]/g, '')}_${++idCounter}`;
 
-        const CDK_NOISE_PATTERNS = [
-            'AssetImage', 'Staging', 'S3Obj', 'Code', 'Repository', 'Parameters', 
-            'AssetParameters', 'CheckBootstrapVersion'
-        ];
 
-        const extractRefs = (obj: any): string[] => {
-            const refs = new Set<string>();
-            const traverse = (current: any) => {
-                if (!current || typeof current !== 'object') return;
-                if (current.Ref && typeof current.Ref === 'string') { refs.add(current.Ref); return; }
-                if (current['Fn::GetAtt']) {
-                    const val = current['Fn::GetAtt'];
-                    if (Array.isArray(val) && val.length > 0) refs.add(val[0]);
-                    else if (typeof val === 'string') refs.add(val.split('.')[0]);
-                    return;
-                }
-                if (current['Fn::Sub']) {
-                   // Implementación simple
-                }
-                if (Array.isArray(current)) current.forEach(item => traverse(item));
-                else Object.values(current).forEach(child => traverse(child));
-            };
-            traverse(obj);
-            return Array.from(refs);
-        };
 
         const processNode = (treeNode: CDKTreeNode, parentId?: string, currentStackId?: string) => {
             if (!(treeNode instanceof ConstructNode)) return;
@@ -361,7 +380,6 @@ export class CdkStackProvider implements vscode.TreeDataProvider<CDKTreeNode> {
             }
         }
 
-        console.log(`--- END GRAPH (${nodes.length} nodes, ${edges.length} edges) ---`);
         return { nodes, edges };
     }
 }

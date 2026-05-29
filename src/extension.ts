@@ -13,14 +13,22 @@ const AREA_SIZES: { [key: string]: { w: number, h: number } } = {
     'XXL': { w: 24000, h: 14400 }
 };
 
+interface ConfigUpdate {
+    showMinimap?: boolean;
+    nodeColorMode?: string;
+    graphAreaWidth?: number;
+    graphAreaHeight?: number;
+}
+
 async function scanAndShowGraph(provider: CdkStackProvider, context: vscode.ExtensionContext) {
     const rootPath = provider.currentPath;
-    const folderName = path.basename(rootPath);
-    
+
     if (!rootPath) {
         vscode.window.showErrorMessage('No CDK folder selected.');
         return;
     }
+
+    const folderName = path.basename(rootPath);
 
     try {
         const finalGraph = await provider.getGraphData();
@@ -47,7 +55,7 @@ async function scanAndShowGraph(provider: CdkStackProvider, context: vscode.Exte
         const htmlContent = getHtmlForWebview(context, finalGraph, stacksFound);
         panel.webview.html = htmlContent;
         
-        panel.webview.onDidReceiveMessage(async (message) => {
+        const messageDisposable = panel.webview.onDidReceiveMessage(async (message) => {
             if (message.type === 'downloadPNG') {
                 try {
                     const defaultFileName = `cdk-stack-${folderName}-${new Date().toISOString().split('T')[0]}.png`;
@@ -58,7 +66,7 @@ async function scanAndShowGraph(provider: CdkStackProvider, context: vscode.Exte
                     if (uri) {
                         const base64Data = message.data.replace(/^data:image\/png;base64,/, '');
                         const buffer = Buffer.from(base64Data, 'base64');
-                        fs.writeFileSync(uri.fsPath, buffer);
+                        await fs.promises.writeFile(uri.fsPath, buffer);
                         vscode.window.showInformationMessage(`Graph saved to: ${uri.fsPath}`);
                     }
                 } catch (error) {
@@ -76,7 +84,7 @@ async function scanAndShowGraph(provider: CdkStackProvider, context: vscode.Exte
                     if (uri) {
                         const base64Data = message.data.replace(/^data:image\/svg\+xml;base64,/, '');
                         const svgString = Buffer.from(base64Data, 'base64').toString('utf-8');
-                        fs.writeFileSync(uri.fsPath, svgString, 'utf-8');
+                        await fs.promises.writeFile(uri.fsPath, svgString, 'utf-8');
                         vscode.window.showInformationMessage(`SVG saved to: ${uri.fsPath}`);
                     }
                 } catch (error) {
@@ -85,22 +93,22 @@ async function scanAndShowGraph(provider: CdkStackProvider, context: vscode.Exte
                 }
             }
         });
-        
+
         const configListener = vscode.workspace.onDidChangeConfiguration(e => {
             const config = vscode.workspace.getConfiguration('cdk-stackmap');
             let changed = false;
-            const configUpdate: any = {};
+            const configUpdate: ConfigUpdate = {};
             if (e.affectsConfiguration('cdk-stackmap.showMinimap')) {
-                configUpdate.showMinimap = config.get('showMinimap', true);
+                configUpdate.showMinimap = config.get<boolean>('showMinimap', true);
                 changed = true;
             }
             if (e.affectsConfiguration('cdk-stackmap.nodeColorMode')) {
-                configUpdate.nodeColorMode = config.get('nodeColorMode', 'fill');
+                configUpdate.nodeColorMode = config.get<string>('nodeColorMode', 'fill');
                 changed = true;
             }
 			if (e.affectsConfiguration('cdk-stackmap.graphAreaSize')) {
-				const sizeKey = config.get('graphAreaSize', 'M');
-				const dims = AREA_SIZES[sizeKey] || AREA_SIZES['M'];
+				const sizeKey = config.get<string>('graphAreaSize', 'M');
+				const dims = AREA_SIZES[sizeKey] ?? AREA_SIZES['M'];
 				
 				configUpdate.graphAreaWidth = dims.w;
 				configUpdate.graphAreaHeight = dims.h;
@@ -111,7 +119,11 @@ async function scanAndShowGraph(provider: CdkStackProvider, context: vscode.Exte
                 panel.webview.postMessage({ type: 'updateConfig', config: configUpdate });
             }
         });
-        context.subscriptions.push(configListener);
+
+        panel.onDidDispose(() => {
+            messageDisposable.dispose();
+            configListener.dispose();
+        });
 
     } catch (error) {
         vscode.window.showErrorMessage('Error processing CDK Stack.');
@@ -166,10 +178,10 @@ function getHtmlForWebview(context: vscode.ExtensionContext, graphData: GraphDat
     let html = fs.readFileSync(htmlPath, 'utf-8');
 
     html = html.replace('{{stackCount}}', count.toString());
-    html = html.replace('{{graphData}}', JSON.stringify(graphData));
+    html = html.replace('{{graphData}}', JSON.stringify(graphData).replace(/<\//g, '<\\/'));
 
     const config = vscode.workspace.getConfiguration('cdk-stackmap');
-    const sizeKey = config.get('graphAreaSize', 'M');
+    const sizeKey = config.get<string>('graphAreaSize', 'M');
     
     const dims = AREA_SIZES[sizeKey] || AREA_SIZES['M'];
 
@@ -180,7 +192,7 @@ function getHtmlForWebview(context: vscode.ExtensionContext, graphData: GraphDat
         graphAreaHeight: dims.h
     };
     
-    html = html.replace('<body>', `<body>\n<script>window.__USER_CONFIG__ = ${JSON.stringify(configObj)};<\/script>`);
+    html = html.replace('<body>', `<body>\n<script>window.__USER_CONFIG__ = ${JSON.stringify(configObj).replace(/<\//g, '<\\/')};<\/script>`);
     return html;
 }
 
